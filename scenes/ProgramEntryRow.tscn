@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3 uid="uid://bnaue8vc7nxt1"]
+
+[ext_resource type="Script" uid="uid://bn08kmhc5t3we" path="res://scripts/ProgramEntryRow.gd" id="1_nteuw"]
+
+[node name="ProgramEntryRow" type="HBoxContainer"]
+offset_right = 40.0
+offset_bottom = 40.0
+size_flags_horizontal = 3
+script = ExtResource("1_nteuw")
+
+[node name="InfoLabel" type="Label" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+vertical_alignment = 1
+
+[node name="UnlockButton" type="Button" parent="."]
+layout_mode = 2
+text = "Unlock"

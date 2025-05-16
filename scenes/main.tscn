@@ -1,0 +1,326 @@
+[gd_scene load_steps=17 format=3 uid="uid://dfqndug24dyeb"]
+
+[ext_resource type="Script" uid="uid://cto4gyufp4b2u" path="res://scripts/BuildingManager.gd" id="1_tefeu"]
+[ext_resource type="Script" uid="uid://1m4n12g83di3" path="res://scripts/RTS_Camera_Controller.gd" id="2_o6xl0"]
+[ext_resource type="Script" uid="uid://b3ydeked4f8di" path="res://scripts/TimeManager.gd" id="3_tipki"]
+[ext_resource type="Script" uid="uid://j40d0n6ton7h" path="res://scripts/StudentManager.gd" id="4_85g3d"]
+[ext_resource type="PackedScene" uid="uid://bjq22nhxyeo51" path="res://actors/student.tscn" id="5_choun"]
+[ext_resource type="Script" uid="uid://dnjdjrgsjbbbl" path="res://scripts/UniversityData.gd" id="6_ya4ey"]
+[ext_resource type="Script" uid="uid://vfea85nn7btw" path="res://scripts/AcademicManager.gd" id="7_o6xl0"]
+[ext_resource type="Script" uid="uid://pn8ver688s3a" path="res://scripts/ProgramManagementUI.gd" id="8_tipki"]
+[ext_resource type="Script" uid="uid://sfyaevvu3ttv" path="res://scripts/SchedulingPanel.gd" id="9_85g3d"]
+
+[sub_resource type="PhysicalSkyMaterial" id="PhysicalSkyMaterial_0xm2m"]
+
+[sub_resource type="Sky" id="Sky_h2yge"]
+sky_material = SubResource("PhysicalSkyMaterial_0xm2m")
+
+[sub_resource type="Environment" id="Environment_1bvp3"]
+background_mode = 2
+sky = SubResource("Sky_h2yge")
+ambient_light_color = Color(0.30139, 0.30139, 0.30139, 1)
+ambient_light_energy = 0.32
+
+[sub_resource type="NavigationMesh" id="NavigationMesh_h2yge"]
+vertices = PackedVector3Array(-49.5, 0.3, -49.5, -49.5, 0.3, 49.5, 49.5, 0.3, 49.5, 49.5, 0.3, -49.5)
+polygons = [PackedInt32Array(3, 2, 0), PackedInt32Array(0, 2, 1)]
+geometry_parsed_geometry_type = 1
+agent_height = 2.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_h2yge"]
+albedo_color = Color(0.345247, 0.450412, 0.105146, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_1bvp3"]
+size = Vector2(100, 100)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_lquwl"]
+size = Vector3(100, 0.2, 100)
+
+[node name="BuildingManager" type="Node3D" node_paths=PackedStringArray("view_students_button", "view_programs_button", "view_schedule_button")]
+script = ExtResource("1_tefeu")
+view_students_button = NodePath("Panel/HBoxContainer/ViewStudentsButton")
+view_programs_button = NodePath("Panel/HBoxContainer/ViewPrograms")
+view_schedule_button = NodePath("Panel/HBoxContainer/ViewScheduleButton")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, 0.383022, -0.321394, 0, 0.642788, 0.766044, 0.5, -0.663414, 0.55667, 0, 0, 0)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1bvp3")
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("2_o6xl0")
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 25, 20)
+current = true
+
+[node name="PlacedBlocks" type="Node3D" parent="."]
+
+[node name="Panel" type="Panel" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -377.0
+offset_top = -50.0
+offset_right = -377.0
+offset_bottom = -50.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Panel"]
+layout_mode = 0
+offset_right = 796.0
+offset_bottom = 40.0
+alignment = 1
+
+[node name="BuildDorm" type="Button" parent="Panel/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BuildDorm
+"
+
+[node name="BuildClassroom" type="Button" parent="Panel/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BuildClassroom"
+
+[node name="ViewStudentsButton" type="Button" parent="Panel/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "View Students"
+
+[node name="ViewPrograms" type="Button" parent="Panel/HBoxContainer"]
+layout_mode = 2
+text = "ViewPrograms"
+
+[node name="ViewScheduleButton" type="Button" parent="Panel/HBoxContainer"]
+layout_mode = 2
+text = "View Schedules"
+
+[node name="TimeManager" type="Node" parent="." node_paths=PackedStringArray("student_manager")]
+script = ExtResource("3_tipki")
+student_manager = NodePath("../StudentManager")
+
+[node name="TopUI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+grow_horizontal = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="TopUI"]
+custom_minimum_size = Vector2(20, 10)
+layout_mode = 0
+offset_left = -492.0
+offset_right = 449.0
+offset_bottom = 40.0
+alignment = 1
+
+[node name="DateLabel" type="Label" parent="TopUI/HBoxContainer"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SpeedLabel" type="Label" parent="TopUI/HBoxContainer"]
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PauseButton" type="Button" parent="TopUI/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "||"
+
+[node name="PlayButton" type="Button" parent="TopUI/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ">"
+
+[node name="FastForwardButton" type="Button" parent="TopUI/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ">>"
+
+[node name="VBoxContainer" type="VBoxContainer" parent="TopUI/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="IncomeLabel" type="Label" parent="TopUI/HBoxContainer/VBoxContainer"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+
+[node name="ExpensesLabel" type="Label" parent="TopUI/HBoxContainer/VBoxContainer"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+
+[node name="EndowmentLabel" type="Label" parent="TopUI/HBoxContainer/VBoxContainer"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+
+[node name="Students" type="Node3D" parent="."]
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("NavigationMesh_h2yge")
+navigation_layers = 3
+
+[node name="Ground" type="StaticBody3D" parent="NavigationRegion3D"]
+
+[node name="GroundVisual" type="MeshInstance3D" parent="NavigationRegion3D/Ground"]
+material_override = SubResource("StandardMaterial3D_h2yge")
+mesh = SubResource("PlaneMesh_1bvp3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+shape = SubResource("BoxShape3D_lquwl")
+
+[node name="PlacedBlocksOrganizational" type="Node" parent="NavigationRegion3D"]
+
+[node name="StudentManager" type="Node" parent="." node_paths=PackedStringArray("university_data_node")]
+script = ExtResource("4_85g3d")
+student_scene = ExtResource("5_choun")
+max_students = 1
+spawn_interval = 2.0
+university_data_node = NodePath("../UniversityDataNode")
+
+[node name="UniversityDataNode" type="Node" parent="."]
+script = ExtResource("6_ya4ey")
+
+[node name="StudentListPanel" type="PanelContainer" parent="."]
+visible = false
+custom_minimum_size = Vector2(0, 400)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -131.0
+offset_right = 150.0
+offset_bottom = 131.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="StudentListPanel"]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="StudentListPanel/MarginContainer"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="StudentListPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Student Roster"
+
+[node name="StudentScrollContainer" type="ScrollContainer" parent="StudentListPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 200)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="StudentListVBox" type="VBoxContainer" parent="StudentListPanel/MarginContainer/VBoxContainer/StudentScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 0
+
+[node name="CloseStudentPanelButton" type="Button" parent="StudentListPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Close"
+
+[node name="AcademicManager" type="Node" parent="." node_paths=PackedStringArray("university_data", "building_manager", "time_manager")]
+script = ExtResource("7_o6xl0")
+university_data = NodePath("../UniversityDataNode")
+building_manager = NodePath("..")
+time_manager = NodePath("../TimeManager")
+
+[node name="ProgramManagementPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager")]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -194.0
+offset_top = -127.0
+offset_right = 206.0
+offset_bottom = 139.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_vertical = 0
+script = ExtResource("8_tipki")
+academic_manager = NodePath("../AcademicManager")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="ProgramManagementPanel"]
+layout_mode = 2
+size_flags_vertical = 0
+
+[node name="ProgramsLabel" type="Label" parent="ProgramManagementPanel/VBoxContainer"]
+layout_mode = 2
+text = "University Programs"
+horizontal_alignment = 1
+
+[node name="ProgramListVBox" type="VBoxContainer" parent="ProgramManagementPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="SchedulingPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager")]
+custom_minimum_size = Vector2(800, 500)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -366.0
+offset_top = -209.0
+offset_right = 429.0
+offset_bottom = 235.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("9_85g3d")
+academic_manager = NodePath("../AcademicManager")
+
+[node name="MainHSplit" type="HSplitContainer" parent="SchedulingPanel"]
+layout_mode = 2
+
+[node name="UnscheduledCoursesArea" type="PanelContainer" parent="SchedulingPanel/MainHSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.25
+
+[node name="UnscheduledVBox" type="VBoxContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea"]
+layout_mode = 2
+
+[node name="UnscheduledTitleLabel" type="Label" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox"]
+layout_mode = 2
+text = "Unscheduled Courses"
+horizontal_alignment = 1
+
+[node name="UnscheduledScroll" type="ScrollContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="UnscheduledCoursesListVBox" type="VBoxContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox/UnscheduledScroll"]
+layout_mode = 2
+
+[node name="ClassroomSchedulesArea" type="PanelContainer" parent="SchedulingPanel/MainHSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ClassroomSchedulesVBox" type="VBoxContainer" parent="SchedulingPanel/MainHSplit/ClassroomSchedulesArea"]
+layout_mode = 2
+
+[node name="ClassroomsTitleLabel" type="Label" parent="SchedulingPanel/MainHSplit/ClassroomSchedulesArea/ClassroomSchedulesVBox"]
+layout_mode = 2
+text = "Classroom Schedules"
+horizontal_alignment = 1
+
+[node name="ClassroomTabs" type="TabContainer" parent="SchedulingPanel/MainHSplit/ClassroomSchedulesArea/ClassroomSchedulesVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[connection signal="pressed" from="Panel/HBoxContainer/BuildDorm" to="." method="_on_select_dorm_pressed"]
+[connection signal="pressed" from="Panel/HBoxContainer/BuildClassroom" to="." method="_on_select_class_pressed"]
+[connection signal="pressed" from="TopUI/HBoxContainer/PauseButton" to="." method="_on_pause_button_pressed"]
+[connection signal="pressed" from="TopUI/HBoxContainer/PlayButton" to="." method="_on_play_button_pressed"]
+[connection signal="pressed" from="TopUI/HBoxContainer/FastForwardButton" to="." method="_on_ff_button_pressed"]

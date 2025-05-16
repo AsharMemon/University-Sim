@@ -1,0 +1,21 @@
+[gd_scene load_steps=2 format=3 uid="uid://btssw2c8mh7hr"]
+
+[ext_resource type="Script" uid="uid://cpkye2wo4am5g" path="res://scripts/UnscheduledCourseEntry.gd" id="1_4x5oi"]
+
+[node name="UnscheduledCourseEntry" type="Button"]
+custom_minimum_size = Vector2(0, 50)
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -4.0
+offset_right = 4.0
+offset_bottom = 8.0
+grow_horizontal = 2
+size_flags_horizontal = 3
+size_flags_vertical = 0
+script = ExtResource("1_4x5oi")
+
+[node name="CourseNameLabel" type="Label" parent="."]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0

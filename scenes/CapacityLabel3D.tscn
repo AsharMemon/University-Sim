@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3 uid="uid://bokqysd46j3vv"]
+
+[sub_resource type="SystemFont" id="SystemFont_yhwf6"]
+subpixel_positioning = 0
+
+[node name="CapacityLabelDisplay" type="Node3D"]
+
+[node name="CapacityTextLabel" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+pixel_size = 0.01
+billboard = 2
+text = "0/0"
+font = SubResource("SystemFont_yhwf6")
+font_size = 64

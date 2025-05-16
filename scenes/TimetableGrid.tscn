@@ -1,0 +1,32 @@
+[gd_scene load_steps=2 format=3 uid="uid://47ibwkvwt26u"]
+
+[ext_resource type="Script" uid="uid://bysgkrvkoj6yp" path="res://scripts/TimetableGrid.gd" id="1_mhhyr"]
+
+[node name="TimetableGrid" type="PanelContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1_mhhyr")
+
+[node name="GridVBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="HeaderRowHBox" type="HBoxContainer" parent="GridVBox"]
+layout_mode = 2
+
+[node name="TimeColumnSpacer" type="Control" parent="GridVBox/HeaderRowHBox"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+
+[node name="TimeSlotsScroll" type="ScrollContainer" parent="GridVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="TimeSlotsGrid" type="GridContainer" parent="GridVBox/TimeSlotsScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 6
