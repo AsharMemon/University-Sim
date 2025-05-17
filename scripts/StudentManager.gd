@@ -1,243 +1,278 @@
 # StudentManager.gd
-# Manages the lifecycle of student instances, including spawning,
-# providing necessary references, and triggering academic and needs updates.
+# Manages student population, spawning, and initial enrollment into programs and courses.
+class_name StudentManager
 extends Node
 
-# --- Exported Variables (Set in Godot Editor Inspector) ---
-# Scene for individual students.
-@export var student_scene: PackedScene 
-# Maximum number of students allowed in the simulation.
-@export var max_students: int = 10
-# Interval in seconds between attempts to spawn new students.
-@export var spawn_interval: float = 5.0
-# Reference to the UniversityData node in the scene.
-@export var university_data_node: UniversityData 
+signal student_spawned(student_node: Node)
+signal all_students_cleared()
+signal student_population_changed(new_count: int) # <<< NEW SIGNAL TO ADD at the top with other signals
 
-# --- Internal Variables ---
-# Timer for periodically spawning students.
-var student_spawn_timer: Timer 
-# Array to keep track of all active student instances.
-var student_instances: Array[Node] = [] 
-# Reference to the BuildingManager node (or main game controller).
-var building_manager_node: Node 
-# Reference to the NavigationRegion3D node for pathfinding.
-var navigation_region_node: NavigationRegion3D
-# Effective Y-coordinate for ground level, used for spawning and navigation queries.
-var effective_ground_y: float = 2.4 
-# Flag indicating if the initial NavMesh bake has completed.
-var _initial_navmesh_ready: bool = false
+# --- Node & Scene References (Assign in Editor) ---
+@export var student_scene: PackedScene # Your Student.tscn
+@export var university_data_node: UniversityData
+@export var academic_manager_node: AcademicManager
+@export var building_manager_node: BuildingManager
+@export var time_manager_node: TimeManager
+@export var navigation_region_node: NavigationRegion3D # For student pathfinding setup
+@export var spawn_area_nodes: Array[Node3D] # Optional: Define areas where new students appear
 
+# --- Student Management ---
+var student_list: Dictionary = {} # Key: student_id (String), Value: student_node (Student)
+var student_id_counter: int = 0   # For generating unique student IDs
+
+# --- Enrollment Logic ---
+const BASE_STUDENT_DEMAND_PER_YEAR = 15 # Configurable: Base number of applicants if reputation is minimal
+var academic_year_enrollment_done: Dictionary = {} # Key: year (int), Value: bool (true if September intake done for that year)
+
+var initial_navmesh_setup_done = false # To ensure NavMesh dependent setup happens once
 
 func _ready():
-	# Initialize the student spawn timer.
-	student_spawn_timer = Timer.new()
-	student_spawn_timer.name = "StudentSpawnTimerInternal" # For easier identification in remote inspector.
-	add_child(student_spawn_timer) # Add timer to the scene tree to make it active.
-
-	print_debug("StudentManager _ready() called.")
-
-	# Critical check: Student scene must be assigned.
+	print_debug("_ready() called.")
 	if not student_scene:
-		printerr("StudentManager: Student scene not assigned in the Inspector! StudentManager will not function correctly.")
-		return # Stop further initialization if student scene is missing.
+		printerr("CRITICAL - Student Scene not assigned in StudentManager! Cannot spawn students.")
+		get_tree().quit(); return # Cannot function without student scene
 
-	# Critical check: UniversityData node must be assigned.
+	# Fallbacks for essential node references if not assigned in editor
 	if not is_instance_valid(university_data_node):
-		printerr("StudentManager: CRITICAL - UniversityData node not assigned in the Inspector! Academic features will fail.")
-	else:
-		print_debug("StudentManager: UniversityData node reference is SET.")
+		university_data_node = get_node_or_null("/root/MainScene/UniversityDataNode") # Adjust if your node name is different
+	if is_instance_valid(university_data_node): print_debug("UniversityData node reference is SET.")
+	else: printerr("CRITICAL - UniversityData node not found!")
 
-	# Attempt to find the BuildingManager node.
-	building_manager_node = get_tree().root.get_node_or_null("BuildingManager") 
-	if not building_manager_node:
-		building_manager_node = get_parent() # Fallback: try parent if StudentManager is a child.
-		if not building_manager_node or not (building_manager_node.name == "BuildingManager" or building_manager_node.is_in_group("BuildingManager")):
-			printerr("StudentManager: Could not find BuildingManager node. Ensure it's named 'BuildingManager' or in that group, or adjust path.")
-		elif building_manager_node:
-			print_debug("StudentManager: Found BuildingManager node.")
-
-	# Get references and constants from BuildingManager if available.
-	if building_manager_node:
-		if building_manager_node.has_method("get_navigation_region"):
-			navigation_region_node = building_manager_node.get_navigation_region()
-		
-		if "EFFECTIVE_GROUND_NAVMESH_Y_FOR_REFERENCE" in building_manager_node:
-			effective_ground_y = building_manager_node.EFFECTIVE_GROUND_NAVMESH_Y_FOR_REFERENCE
-		else:
-			printerr("StudentManager: BuildingManager is missing 'EFFECTIVE_GROUND_NAVMESH_Y_FOR_REFERENCE'. Using default Y: " + str(effective_ground_y))
-	else:
-		printerr("StudentManager: BuildingManager node not found. Using default Y for ground reference: " + str(effective_ground_y))
+	if not is_instance_valid(academic_manager_node):
+		academic_manager_node = get_node_or_null("/root/MainScene/AcademicManager")
+	if not is_instance_valid(academic_manager_node): printerr("CRITICAL - AcademicManager node not found!")
 	
-	if not navigation_region_node:
-		print_debug("StudentManager: NavigationRegion3D not found/set initially. It should be available before students need to navigate.")
+	if not is_instance_valid(building_manager_node):
+		building_manager_node = get_node_or_null("/root/MainScene/BuildingManager")
+	if not is_instance_valid(building_manager_node): printerr("CRITICAL - BuildingManager node not found!")
 	
-	# Configure and connect the student spawn timer.
-	student_spawn_timer.wait_time = spawn_interval
-	student_spawn_timer.timeout.connect(_on_student_spawn_timer_timeout)
+	if not is_instance_valid(time_manager_node):
+		time_manager_node = get_node_or_null("/root/MainScene/TimeManager")
+	if not is_instance_valid(time_manager_node): 
+		printerr("CRITICAL - TimeManager node not found!")
+	else: # Connect to TimeManager signals for enrollment cycle
+		if time_manager_node.has_signal("september_enrollment_starts") and \
+		   not time_manager_node.is_connected("september_enrollment_starts", Callable(self, "handle_september_enrollment")):
+			var err_s = time_manager_node.connect("september_enrollment_starts", Callable(self, "handle_september_enrollment"))
+			if err_s == OK: print_debug("Connected to TimeManager.september_enrollment_starts.")
+			else: printerr("Failed to connect to september_enrollment_starts. Error: %s" % err_s)
 		
-	print_debug("StudentManager fully initialized. Waiting for NavMesh signal from BuildingManager to start spawning students.")
+		if time_manager_node.has_signal("new_year_started") and \
+		   not time_manager_node.is_connected("new_year_started", Callable(self, "_on_new_game_year_started")):
+			var err_y = time_manager_node.connect("new_year_started", Callable(self, "_on_new_game_year_started"))
+			if err_y == OK: print_debug("Connected to TimeManager.new_year_started for enrollment flag reset.")
+			else: printerr("Failed to connect to new_year_started. Error: %s" % err_y)
+			
+	if not is_instance_valid(navigation_region_node):
+		navigation_region_node = get_node_or_null("/root/MainScene/NavigationRegion3D") # Attempt common path
+		if not is_instance_valid(navigation_region_node):
+			print_debug("NavigationRegion3D not found/set initially. Students may not navigate until it's available (e.g., after NavMesh bake).")
+	
+	print_debug("StudentManager fully initialized. Awaiting NavMesh and enrollment triggers.")
 
 
 # Called by BuildingManager after the initial NavMesh bake is complete.
 func on_initial_navmesh_baked():
-	print_debug("StudentManager: Received initial NavMesh baked signal.")
-	if not is_instance_valid(student_spawn_timer):
-		printerr("StudentManager: CRITICAL - student_spawn_timer is null or invalid in on_initial_navmesh_baked! Cannot start timer.")
-		return
-
-	_initial_navmesh_ready = true # Mark NavMesh as ready.
+	if initial_navmesh_setup_done : return # Run only once
+	print_debug("Received initial NavMesh baked signal from BuildingManager.")
 	
-	# Ensure NavigationRegion reference is up-to-date if it wasn't available during _ready.
-	if not navigation_region_node and building_manager_node and building_manager_node.has_method("get_navigation_region"):
-		navigation_region_node = building_manager_node.get_navigation_region()
-		if not navigation_region_node:
-			printerr("StudentManager: NavMesh baked, but still couldn't get NavigationRegion from BuildingManager. Student navigation might fail.")
+	if not is_instance_valid(navigation_region_node) and is_instance_valid(building_manager_node):
+		if building_manager_node.has_method("get_navigation_region"):
+			navigation_region_node = building_manager_node.get_navigation_region()
+			print_debug("NavigationRegion obtained from BuildingManager.")
 	
-	# Start spawning students if conditions are met.
-	if student_instances.is_empty() and max_students > 0 : 
-		print_debug("StudentManager: Starting student_spawn_timer for initial student spawn.")
-		student_spawn_timer.start()
-		_on_student_spawn_timer_timeout() # Attempt to spawn one student immediately.
-	elif is_instance_valid(student_spawn_timer) and student_spawn_timer.is_stopped() and student_instances.size() < max_students :
-		print_debug("StudentManager: Starting student_spawn_timer (timer was previously stopped and students are below max).")
-		student_spawn_timer.start()
-
-
-# Called by the student_spawn_timer when its interval elapses.
-func _on_student_spawn_timer_timeout():
-	if not _initial_navmesh_ready:
-		#print_debug("StudentManager: NavMesh not ready yet (timer timeout), deferring student spawn.") # Can be verbose
-		return
-	if not navigation_region_node:
-		#print_debug("StudentManager: NavigationRegion not available (timer timeout), cannot find spawn points.") # Can be verbose
-		return 
-	
-	if not is_instance_valid(university_data_node):
-		printerr("StudentManager: UniversityData node not available (timer timeout). Cannot spawn student with academic info.")
-		return
-		
-	# Spawn a new student if below the maximum limit.
-	if student_instances.size() < max_students and student_scene:
-		spawn_student()
-
-# Handles the instantiation and setup of a new student.
-func spawn_student():
-	# Pre-condition checks.
-	if not student_scene:
-		printerr("StudentManager: student_scene is not set (spawn_student). Cannot spawn.")
-		return
-	if not navigation_region_node or \
-	   not navigation_region_node.navigation_mesh or \
-	   not NavigationServer3D.map_is_active(navigation_region_node.get_navigation_map()):
-		#print_debug("StudentManager: Cannot spawn student, navigation map not ready or NavRegion not set (spawn_student).") # Can be verbose
-		return
-	if not is_instance_valid(university_data_node):
-		printerr("StudentManager: UniversityData node not accessible right before spawning student! Aborting spawn.")
-		return
-
-	# Instantiate the student scene.
-	var student_node_instance = student_scene.instantiate() 
-	if not student_node_instance is CharacterBody3D: # Ensure it's the expected type.
-		printerr("StudentManager: Spawned student is not a CharacterBody3D! Check student.tscn root node type.")
-		if is_instance_valid(student_node_instance): student_node_instance.queue_free() # Clean up.
-		return
-	
-	# Get academic info from UniversityData.
-	var new_student_name = university_data_node.generate_random_student_name() 
-	var random_program_id = university_data_node.get_random_program_id() 
-
-	if random_program_id == "":
-		printerr("StudentManager: Could not get a random program ID for new student. Student will have no program.")
-	
-	# Set up the student with academic and navigation references.
-	if student_node_instance.has_method("set_academic_info"):
-		student_node_instance.set_academic_info(new_student_name, random_program_id, university_data_node)
+	if is_instance_valid(navigation_region_node):
+		print_debug("NavigationRegion is now confirmed available for students.")
+		# No automatic student spawn here anymore; new student intake is handled by September enrollment.
 	else:
-		print_debug("StudentManager: Spawned student instance is missing 'set_academic_info' method.")
-		
-	if student_node_instance.has_method("set_navigation_references"):
-		student_node_instance.set_navigation_references(navigation_region_node, effective_ground_y)
+		printerr("NavMesh baked, but StudentManager still does not have a valid NavigationRegion reference!")
+	initial_navmesh_setup_done = true
+
+
+# Connected to TimeManager.new_year_started (assumed Jan 1st)
+func _on_new_game_year_started(year: int):
+	print_debug("New game year %d has begun (Jan 1st). Resetting September enrollment tracker for this year." % year)
+	# academic_year_enrollment_done.erase(year - 1) # Optional: Clean up entry for the year that just passed
+	academic_year_enrollment_done[year] = false # Mark that for this *new calendar year*, September enrollment hasn't happened
+
+
+# Connected to TimeManager.september_enrollment_starts
+func handle_september_enrollment(current_game_year: int):
+	print_debug("Handling September enrollment for game year: ", current_game_year) # Ensure you have print_debug or use print()
+	if not (is_instance_valid(building_manager_node) and \
+			is_instance_valid(academic_manager_node) and \
+			is_instance_valid(university_data_node)):
+		printerr("StudentManager: Missing critical manager references for enrollment.")
+		return
+	
+	if academic_year_enrollment_done.get(current_game_year, false) == true:
+		print_debug("September enrollment for year %d already completed. Skipping." % current_game_year)
+		return
+
+	# 1. Update and Get University Reputation (existing logic)
+	if building_manager_node.has_method("update_reputation_and_ui"):
+		building_manager_node.update_reputation_and_ui() 
+	var reputation = building_manager_node.get_university_reputation()
+
+	# 2. Calculate Student Demand (existing logic)
+	var demand_multiplier = 1.0 + (reputation / 100.0) * 2.0 
+	var student_demand = floori(float(BASE_STUDENT_DEMAND_PER_YEAR) * demand_multiplier)
+	student_demand = maxi(student_demand, 0) # Changed from 5 to 0 for cases with no capacity/demand
+
+	# 3. Calculate University Capacity (existing logic)
+	var enrollment_capacity = academic_manager_node.calculate_new_student_intake_capacity()
+
+	# 4. Determine Number of New Students (existing logic)
+	var num_new_students_to_admit = mini(student_demand, enrollment_capacity)
+
+	print_debug("--- September Enrollment Process (Year %d) ---" % current_game_year)
+	print_debug("Reputation: %.1f/100" % reputation)
+	print_debug("Calculated Student Demand: %d" % student_demand)
+	print_debug("University Intake Capacity: %d seats" % enrollment_capacity)
+	print_debug("ADMITTING: %d new students." % num_new_students_to_admit)
+
+	if num_new_students_to_admit > 0:
+		_spawn_and_process_new_students(num_new_students_to_admit, current_game_year) # Existing function
 	else:
-		print_debug("StudentManager: Spawned student instance is missing 'set_navigation_references' method.")
-
-	# Find a valid spawn position on the NavMesh.
-	var spawn_pos = _get_random_navigable_point() 
-	if spawn_pos == Vector3.INF: # Vector3.INF indicates failure to find a point.
-		print_debug("StudentManager: Failed to find valid spawn point on NavMesh. Spawning at world origin as fallback.")
-		spawn_pos = Vector3(0, effective_ground_y + 0.5, 0) # Fallback spawn position.
+		print_debug("No new students admitted this September.")
 	
-	student_node_instance.global_position = spawn_pos # Set student's position.
-	
-	add_child(student_node_instance) # Add student to the StudentManager node in the scene tree.
-	student_instances.append(student_node_instance) # Add to the list of active students.
-	# print_debug("StudentManager: Spawned student '" + new_student_name + "' (Program: " + random_program_id + ") at " + str(spawn_pos)) # Can be verbose
+	academic_year_enrollment_done[current_game_year] = true
+	emit_signal("student_population_changed", get_total_student_count()) # <<< ADD THIS LINE
+	print_debug("--- September Enrollment Process Finished for Year %d ---" % current_game_year)
 
 
-# Helper function to find a random navigable point on the NavMesh.
-func _get_random_navigable_point() -> Vector3:
-	if not navigation_region_node: 
-		printerr("StudentManager: _get_random_navigable_point - navigation_region_node is null.")
-		return Vector3.INF
-	var nav_map_rid = navigation_region_node.get_navigation_map()
-	if not NavigationServer3D.map_is_active(nav_map_rid): 
-		printerr("StudentManager: _get_random_navigable_point - nav_map is not active.")
-		return Vector3.INF
+func _spawn_and_process_new_students(count: int, academic_year: int):
+	if not is_instance_valid(academic_manager_node) or not is_instance_valid(university_data_node):
+		printerr("Cannot spawn students: AcademicManager or UniversityData not available.")
+		return
 
-	# Try several times to find a point.
-	for _i in range(10): 
-		var random_x = randf_range(-40.0, 40.0) # Adjust these ranges based on your map size.
-		var random_z = randf_range(-40.0, 40.0)
-		var query_point = Vector3(random_x, effective_ground_y, random_z) 
-		var closest_nav_point = NavigationServer3D.map_get_closest_point(nav_map_rid, query_point)
+	var unlocked_programs_ids: Array[String] = academic_manager_node.get_all_unlocked_program_ids()
+	if unlocked_programs_ids.is_empty():
+		print_debug("No unlocked programs available. New students cannot be assigned to a program.")
+		return
+
+	print_debug("Spawning and processing %d new students for academic year %d." % [count, academic_year])
+	for i in range(count):
+		student_id_counter += 1
+		var new_student_id = "stud_%d_%03d" % [academic_year, student_id_counter] # e.g., stud_2025_001
+		var student_name = university_data_node.generate_random_student_name()
+		var chosen_program_id = unlocked_programs_ids.pick_random() # Randomly assign to an unlocked program
+
+		var student_node_instance = student_scene.instantiate() as Student # Cast to your Student class
+		if not is_instance_valid(student_node_instance):
+			printerr("Failed to instantiate student scene for student #%d. Skipping." % (i + 1))
+			continue
+
+		# Initialize student's academic and personal data
+		# Pass manager references if student needs them for complex behaviors later
+		if student_node_instance.has_method("initialize_new_student"):
+			student_node_instance.initialize_new_student(new_student_id, student_name, chosen_program_id, academic_year, academic_manager_node, university_data_node, time_manager_node)
+		else: # Fallback if a comprehensive init method is missing
+			printerr("Student script for %s missing 'initialize_new_student' method. Attempting partial setup." % new_student_id)
+			student_node_instance.student_id = new_student_id
+			student_node_instance.student_name = student_name
+			student_node_instance.name = "Student_%s" % new_student_id # Set Node name
+			if student_node_instance.has_method("assign_program"): student_node_instance.assign_program(chosen_program_id, academic_year)
+
+
+		# Physical spawn - find a spawn point
+		var spawn_position = Vector3.ZERO
+		if spawn_area_nodes and not spawn_area_nodes.is_empty():
+			var random_spawn_area_node = spawn_area_nodes.pick_random() as Node3D
+			if is_instance_valid(random_spawn_area_node):
+				# For a more distributed spawn, you might get bounds of a CSGBox or Area3D
+				spawn_position = random_spawn_area_node.global_position 
+		else: # Fallback spawn position if no areas defined
+			spawn_position = Vector3(randf_range(-10, 10), 0.5, randf_range(-10, 10)) # Example random pos
+
+		add_child(student_node_instance) # Add to StudentManager node in scene tree
+		student_node_instance.global_position = spawn_position
 		
-		if closest_nav_point == Vector3.ZERO and query_point.length_squared() > 1.0:
-			continue # Try again.
-		return closest_nav_point # Valid point found.
+		student_list[new_student_id] = student_node_instance # Track student
+		print_debug("Spawned: %s (%s), Program: %s, at %s" % [student_name, new_student_id, chosen_program_id, spawn_position])
+		emit_signal("student_spawned", student_node_instance)
+
+		# Enroll student in their first semester courses for the chosen program
+		var first_semester_course_ids: Array[String] = academic_manager_node.get_freshman_first_semester_courses(chosen_program_id)
+		if first_semester_course_ids.is_empty():
+			print_debug("Warning: No Freshman/First Semester courses defined in curriculum for program '%s'. Student '%s' will not be enrolled in initial courses automatically." % [chosen_program_id, new_student_id])
+		
+		var courses_successfully_enrolled_count = 0
+		for course_id_str_to_enroll in first_semester_course_ids:
+			# AcademicManager tries to find an offering and enroll the student
+			var enrolled_in_offering_id = academic_manager_node.find_and_enroll_student_in_offering(new_student_id, course_id_str_to_enroll)
+			
+			if not enrolled_in_offering_id.is_empty():
+				# Notify the student instance about this enrollment for its internal tracking
+				if student_node_instance.has_method("confirm_course_enrollment"):
+					var full_offering_details = academic_manager_node.get_offering_details(enrolled_in_offering_id)
+					if not full_offering_details.is_empty():
+						student_node_instance.confirm_course_enrollment(enrolled_in_offering_id, full_offering_details)
+						courses_successfully_enrolled_count +=1
+					else:
+						printerr("Could not get full details for offering '%s' to confirm with student '%s'." % [enrolled_in_offering_id, new_student_id])
+				else:
+					printerr("Student instance '%s' lacks 'confirm_course_enrollment' method." % new_student_id)
+			else: # Failed to enroll in this specific required course
+				printerr("CRITICAL FAILURE: Student '%s' could NOT be enrolled in required Freshman course '%s' for program '%s'. University capacity/scheduling issue!" % [new_student_id, course_id_str_to_enroll, chosen_program_id])
+				# This is a major issue: indicates not enough scheduled offerings or space.
+		
+		print_debug("Student '%s' processed for enrollment in %d first-semester courses for program '%s'." % [new_student_id, courses_successfully_enrolled_count, chosen_program_id])
+		
+		# Trigger any final student setup that depends on being in the scene tree
+		if student_node_instance.has_method("on_fully_spawned_and_enrolled"):
+			student_node_instance.on_fully_spawned_and_enrolled()
+
+
+# --- Helper Functions ---
+func get_all_student_nodes() -> Array[Node]: # Used by BuildingManager for roster UI
+	var nodes_array: Array[Node] = []
+	for student_node in student_list.values(): # student_list values are the student nodes
+		if is_instance_valid(student_node): # Ensure node hasn't been freed
+			nodes_array.append(student_node)
+	return nodes_array
+
+# NEW FUNCTION to get total student count
+func get_total_student_count() -> int:
+	return student_list.size()
 	
-	# printerr("StudentManager: _get_random_navigable_point failed to find a point after 10 tries.") # Can be verbose
-	return Vector3.INF # Indicate failure.
+func get_student_by_id(s_id: String) -> Student: # Return type Student
+	if student_list.has(s_id):
+		return student_list[s_id] as Student # Cast to Student
+	return null
 
-# Removes all student instances from the game.
-func clear_all_students():
-	print_debug("StudentManager: Clearing all " + str(student_instances.size()) + " students.")
-	for student_node_inst in student_instances: 
-		if is_instance_valid(student_node_inst):
-			student_node_inst.queue_free() # Remove from scene and memory.
-	student_instances.clear() # Clear the list.
-	if is_instance_valid(student_spawn_timer): 
-		student_spawn_timer.stop() # Stop spawning new students.
+func clear_all_students(): 
+	print_debug("Clearing all students...")
+	for s_id in student_list.keys(): 
+		var student_node_to_remove = student_list[s_id]
+		if is_instance_valid(student_node_to_remove):
+			student_node_to_remove.queue_free()
+	student_list.clear()
+	student_id_counter = 0 
+	academic_year_enrollment_done.clear() 
+	emit_signal("all_students_cleared") # If you have this signal
+	emit_signal("student_population_changed", 0) # <<< ADD THIS LINE (or get_total_student_count())
+	print_debug("All students cleared and counters reset.")
 
-# Returns an array of all currently active and valid student nodes.
-func get_all_student_nodes() -> Array[Node]:
-	var valid_students: Array[Node] = []
-	for student_node in student_instances:
-		if is_instance_valid(student_node): 
-			valid_students.append(student_node)
-	student_instances = valid_students 
-	return student_instances
+# --- Daily Updates (Example, if StudentManager coordinates this) ---
+func update_all_students_daily_activities(): # Called by BuildingManager on new day
+	# print_debug("Updating daily activities for all students...")
+	for student_node_val in student_list.values():
+		if is_instance_valid(student_node_val) and student_node_val.has_method("process_daily_update"):
+			student_node_val.process_daily_update()
 
-# Iterates through all students and calls their update methods.
-# This should be called periodically by a time management system (e.g., end of day/week/year).
-func update_all_students_daily_activities(): 
-	# print_debug("Updating daily activities for all students...") # Can be verbose if called frequently.
-	for student_node in student_instances:
-		if is_instance_valid(student_node):
-			# CORRECTED ACCESS to is_graduated:
-			if not student_node.is_graduated: # Directly access the public variable
-				# Update Academic Progress (might be less frequent in a real game, e.g., per semester)
-				if student_node.has_method("update_academic_progress"):
-					student_node.update_academic_progress()
-				else:
-					printerr("StudentManager: Student node " + student_node.name + " is missing 'update_academic_progress' method.")
-				
-				# Update Needs and Happiness (could be called daily)
-				if student_node.has_method("update_needs_and_happiness"):
-					student_node.update_needs_and_happiness()
-				else:
-					printerr("StudentManager: Student node " + student_node.name + " is missing 'update_needs_and_happiness' method.")
-		# else: # If student_node is not valid (e.g., was queue_freed but list not updated yet)
-			# print_debug("StudentManager: Attempted to update an invalid student node.") # Can be verbose
 
-# Helper function for consistent debug printing.
-func print_debug(message):
-	print("[StudentManager]: " + str(message))
+func print_debug(message_parts):
+	var final_message = "[StudentManager]: "
+	if typeof(message_parts) == TYPE_STRING:
+		final_message += message_parts
+	elif typeof(message_parts) == TYPE_ARRAY:
+		var string_array : Array[String] = []
+		for item in message_parts: string_array.append(str(item))
+		final_message += " ".join(string_array)
+	elif typeof(message_parts) == TYPE_PACKED_STRING_ARRAY:
+		var temp_array : PackedStringArray = message_parts
+		final_message += " ".join(temp_array)
+	else:
+		final_message += str(message_parts)
+	print(final_message)

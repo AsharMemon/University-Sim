@@ -36,11 +36,28 @@ size = Vector2(100, 100)
 [sub_resource type="BoxShape3D" id="BoxShape3D_lquwl"]
 size = Vector3(100, 0.2, 100)
 
-[node name="BuildingManager" type="Node3D" node_paths=PackedStringArray("view_students_button", "view_programs_button", "view_schedule_button")]
+[node name="BuildingManager" type="Node3D" node_paths=PackedStringArray("time_manager", "academic_manager_node", "date_label", "speed_label", "pause_button", "play_button", "ff_button", "income_label", "expenses_label", "endowment_label", "reputation_label", "total_students_label", "view_students_button", "student_list_panel", "student_list_vbox", "close_student_panel_button", "view_programs_button", "program_management_panel", "view_schedule_button", "scheduling_panel")]
 script = ExtResource("1_tefeu")
+time_manager = NodePath("TimeManager")
+academic_manager_node = NodePath("AcademicManager")
+date_label = NodePath("TopUI/HBoxContainer/DateLabel")
+speed_label = NodePath("TopUI/HBoxContainer/SpeedLabel")
+pause_button = NodePath("TopUI/HBoxContainer/PauseButton")
+play_button = NodePath("TopUI/HBoxContainer/PlayButton")
+ff_button = NodePath("TopUI/HBoxContainer/FastForwardButton")
+income_label = NodePath("TopUI/HBoxContainer/VBoxContainer/IncomeLabel")
+expenses_label = NodePath("TopUI/HBoxContainer/VBoxContainer/ExpensesLabel")
+endowment_label = NodePath("TopUI/HBoxContainer/VBoxContainer/EndowmentLabel")
+reputation_label = NodePath("TopUI/HBoxContainer/VBoxContainer/ReputationLabel")
+total_students_label = NodePath("TopUI/HBoxContainer/VBoxContainer/StudentLabel")
 view_students_button = NodePath("Panel/HBoxContainer/ViewStudentsButton")
+student_list_panel = NodePath("StudentListPanel")
+student_list_vbox = NodePath("StudentListPanel/MarginContainer/VBoxContainer")
+close_student_panel_button = NodePath("StudentListPanel/MarginContainer/VBoxContainer/CloseStudentPanelButton")
 view_programs_button = NodePath("Panel/HBoxContainer/ViewPrograms")
+program_management_panel = NodePath("ProgramManagementPanel")
 view_schedule_button = NodePath("Panel/HBoxContainer/ViewScheduleButton")
+scheduling_panel = NodePath("SchedulingPanel")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866025, 0.383022, -0.321394, 0, 0.642788, 0.766044, 0.5, -0.663414, 0.55667, 0, 0, 0)
@@ -101,9 +118,8 @@ text = "ViewPrograms"
 layout_mode = 2
 text = "View Schedules"
 
-[node name="TimeManager" type="Node" parent="." node_paths=PackedStringArray("student_manager")]
+[node name="TimeManager" type="Node" parent="."]
 script = ExtResource("3_tipki")
-student_manager = NodePath("../StudentManager")
 
 [node name="TopUI" type="Control" parent="."]
 layout_mode = 3
@@ -161,6 +177,12 @@ layout_mode = 2
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
 
+[node name="ReputationLabel" type="Label" parent="TopUI/HBoxContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="StudentLabel" type="Label" parent="TopUI/HBoxContainer/VBoxContainer"]
+layout_mode = 2
+
 [node name="Students" type="Node3D" parent="."]
 
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
@@ -179,12 +201,14 @@ shape = SubResource("BoxShape3D_lquwl")
 
 [node name="PlacedBlocksOrganizational" type="Node" parent="NavigationRegion3D"]
 
-[node name="StudentManager" type="Node" parent="." node_paths=PackedStringArray("university_data_node")]
+[node name="StudentManager" type="Node" parent="." node_paths=PackedStringArray("university_data_node", "academic_manager_node", "building_manager_node", "time_manager_node", "navigation_region_node")]
 script = ExtResource("4_85g3d")
 student_scene = ExtResource("5_choun")
-max_students = 1
-spawn_interval = 2.0
 university_data_node = NodePath("../UniversityDataNode")
+academic_manager_node = NodePath("../AcademicManager")
+building_manager_node = NodePath("..")
+time_manager_node = NodePath("../TimeManager")
+navigation_region_node = NodePath("../NavigationRegion3D")
 
 [node name="UniversityDataNode" type="Node" parent="."]
 script = ExtResource("6_ya4ey")
@@ -235,8 +259,7 @@ university_data = NodePath("../UniversityDataNode")
 building_manager = NodePath("..")
 time_manager = NodePath("../TimeManager")
 
-[node name="ProgramManagementPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager")]
-visible = false
+[node name="ProgramManagementPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager", "program_list_vbox", "selected_program_name_label", "course_viz_vbox", "course_name_label", "course_id_label", "course_credits_label", "course_description_label")]
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
@@ -251,20 +274,88 @@ grow_vertical = 2
 size_flags_vertical = 0
 script = ExtResource("8_tipki")
 academic_manager = NodePath("../AcademicManager")
+program_list_vbox = NodePath("MainMargin/MainHBox/LeftColumn/ProgramScroll/ProgramListVBox")
+selected_program_name_label = NodePath("MainMargin/MainHBox/MiddleColumn/SelectedProgramNameLabel")
+course_viz_vbox = NodePath("MainMargin/MainHBox/MiddleColumn/CourseVizScroll/CourseVizBox")
+course_name_label = NodePath("MainMargin/MainHBox/RightColumn/CourseNameLabel")
+course_id_label = NodePath("MainMargin/MainHBox/RightColumn/CourseIDLabel")
+course_credits_label = NodePath("MainMargin/MainHBox/RightColumn/CourseCreditsLabel")
+course_description_label = NodePath("MainMargin/MainHBox/RightColumn/CourseDescriptionScroll/CourseDescriptionLabel")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="ProgramManagementPanel"]
+[node name="MainMargin" type="MarginContainer" parent="ProgramManagementPanel"]
 layout_mode = 2
-size_flags_vertical = 0
 
-[node name="ProgramsLabel" type="Label" parent="ProgramManagementPanel/VBoxContainer"]
+[node name="MainHBox" type="HBoxContainer" parent="ProgramManagementPanel/MainMargin"]
+layout_mode = 2
+
+[node name="LeftColumn" type="VBoxContainer" parent="ProgramManagementPanel/MainMargin/MainHBox"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+
+[node name="LabelProgramsTitle" type="Label" parent="ProgramManagementPanel/MainMargin/MainHBox/LeftColumn"]
 layout_mode = 2
 text = "University Programs"
 horizontal_alignment = 1
 
-[node name="ProgramListVBox" type="VBoxContainer" parent="ProgramManagementPanel/VBoxContainer"]
+[node name="ProgramScroll" type="ScrollContainer" parent="ProgramManagementPanel/MainMargin/MainHBox/LeftColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ProgramListVBox" type="VBoxContainer" parent="ProgramManagementPanel/MainMargin/MainHBox/LeftColumn/ProgramScroll"]
 layout_mode = 2
 
+[node name="MiddleColumn" type="VBoxContainer" parent="ProgramManagementPanel/MainMargin/MainHBox"]
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SelectedProgramNameLabel" type="Label" parent="ProgramManagementPanel/MainMargin/MainHBox/MiddleColumn"]
+layout_mode = 2
+text = "Select a Program to View Courses"
+horizontal_alignment = 1
+
+[node name="CourseVizScroll" type="ScrollContainer" parent="ProgramManagementPanel/MainMargin/MainHBox/MiddleColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CourseVizBox" type="VBoxContainer" parent="ProgramManagementPanel/MainMargin/MainHBox/MiddleColumn/CourseVizScroll"]
+layout_mode = 2
+
+[node name="RightColumn" type="VBoxContainer" parent="ProgramManagementPanel/MainMargin/MainHBox"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+
+[node name="LabelCourseInfoTitle" type="Label" parent="ProgramManagementPanel/MainMargin/MainHBox/RightColumn"]
+layout_mode = 2
+text = "Course Information"
+horizontal_alignment = 1
+
+[node name="CourseNameLabel" type="Label" parent="ProgramManagementPanel/MainMargin/MainHBox/RightColumn"]
+layout_mode = 2
+text = "Course Name: –"
+
+[node name="CourseIDLabel" type="Label" parent="ProgramManagementPanel/MainMargin/MainHBox/RightColumn"]
+layout_mode = 2
+text = "ID: –"
+
+[node name="CourseCreditsLabel" type="Label" parent="ProgramManagementPanel/MainMargin/MainHBox/RightColumn"]
+layout_mode = 2
+text = "Credits: –"
+
+[node name="CourseDescriptionScroll" type="ScrollContainer" parent="ProgramManagementPanel/MainMargin/MainHBox/RightColumn"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CourseDescriptionLabel" type="RichTextLabel" parent="ProgramManagementPanel/MainMargin/MainHBox/RightColumn/CourseDescriptionScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+bbcode_enabled = true
+text = "Select a course to see details."
+
 [node name="SchedulingPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager")]
+visible = false
 custom_minimum_size = Vector2(800, 500)
 anchors_preset = 8
 anchor_left = 0.5

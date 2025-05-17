@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://b7kstevyn5xd2" path="res://scripts/StudentListItem.gd" id="1_vfm8d"]
 
-[node name="StudentListItem" type="PanelContainer"]
+[node name="StudentListItem" type="PanelContainer" node_paths=PackedStringArray("student_name_label", "program_label", "courses_label", "status_label", "credits_label")]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -11,6 +11,11 @@ grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_vertical = 0
 script = ExtResource("1_vfm8d")
+student_name_label = NodePath("MarginContainer/VBoxContainer/StudentNameLabel")
+program_label = NodePath("MarginContainer/VBoxContainer/ProgramLabel")
+courses_label = NodePath("MarginContainer/VBoxContainer/CoursesLabel")
+status_label = NodePath("MarginContainer/VBoxContainer/StatusLabel")
+credits_label = NodePath("MarginContainer/VBoxContainer/CreditsLabel")
 
 [node name="MarginContainer" type="MarginContainer" parent="."]
 layout_mode = 2

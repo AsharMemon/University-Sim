@@ -5,11 +5,11 @@ extends PanelContainer
 
 # --- Node References (Set in Godot Editor or via @onready) ---
 # Ensure these paths match the node structure in your StudentListItem.tscn scene.
-@onready var student_name_label: Label = $MarginContainer/VBoxContainer/StudentNameLabel
-@onready var program_label: Label = $MarginContainer/VBoxContainer/ProgramLabel
-@onready var courses_label: Label = $MarginContainer/VBoxContainer/CoursesLabel
-@onready var status_label: Label = $MarginContainer/VBoxContainer/StatusLabel   # Label to show "Status: Enrolled" or "Status: Graduated!"
-@onready var credits_label: Label = $MarginContainer/VBoxContainer/CreditsLabel # Label to show "Credits: X / Y"
+@export var student_name_label: Label
+@export var program_label: Label
+@export var courses_label: Label
+@export var status_label: Label  # Label to show "Status: Enrolled" or "Status: Graduated!"
+@export var credits_label: Label # Label to show "Credits: X / Y"
 
 func _ready():
 	# This function is called when the node is ready.

@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3 uid="uid://bjq22nhxyeo51"]
 
-[ext_resource type="Script" uid="uid://df5b05ank2nh2" path="res://scripts/student.gd" id="1_2mnvv"]
+[ext_resource type="Script" uid="uid://df5b05ank2nh2" path="res://scripts/Student.gd" id="1_2mnvv"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_2mnvv"]
 
@@ -16,5 +16,6 @@ mesh = SubResource("CapsuleMesh_2mnvv")
 shape = SubResource("CapsuleShape3D_2mnvv")
 
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+height = 2.0
 
 [node name="PathUpdateTimer" type="Timer" parent="."]

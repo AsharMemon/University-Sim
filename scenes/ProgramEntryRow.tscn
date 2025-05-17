@@ -1,18 +1,25 @@
-[gd_scene load_steps=2 format=3 uid="uid://bnaue8vc7nxt1"]
+[gd_scene load_steps=3 format=3 uid="uid://bnaue8vc7nxt1"]
 
 [ext_resource type="Script" uid="uid://bn08kmhc5t3we" path="res://scripts/ProgramEntryRow.gd" id="1_nteuw"]
 
-[node name="ProgramEntryRow" type="HBoxContainer"]
-offset_right = 40.0
-offset_bottom = 40.0
-size_flags_horizontal = 3
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nteuw"]
+bg_color = Color(0.73659, 0.533007, 0.609708, 1)
+
+[node name="ProgramEntryRow" type="PanelContainer"]
+offset_top = 39.0
+offset_right = 296.0
+offset_bottom = 70.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_nteuw")
 script = ExtResource("1_nteuw")
 
-[node name="InfoLabel" type="Label" parent="."]
+[node name="ListItemHBox" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="ProgramNameStatusLabel" type="Label" parent="ListItemHBox"]
 layout_mode = 2
 size_flags_horizontal = 3
-vertical_alignment = 1
+text = "Program Name (Status)"
 
-[node name="UnlockButton" type="Button" parent="."]
+[node name="UnlockButton" type="Button" parent="ListItemHBox"]
 layout_mode = 2
 text = "Unlock"
