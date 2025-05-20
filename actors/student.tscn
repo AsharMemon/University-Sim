@@ -6,8 +6,9 @@
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_2mnvv"]
 
-[node name="Student" type="CharacterBody3D"]
+[node name="Student" type="CharacterBody3D" node_paths=PackedStringArray("student_visuals")]
 script = ExtResource("1_2mnvv")
+student_visuals = NodePath("StudentMesh")
 
 [node name="StudentMesh" type="MeshInstance3D" parent="."]
 mesh = SubResource("CapsuleMesh_2mnvv")
@@ -16,6 +17,12 @@ mesh = SubResource("CapsuleMesh_2mnvv")
 shape = SubResource("CapsuleShape3D_2mnvv")
 
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+avoidance_enabled = true
 height = 2.0
+radius = 2.0
+neighbor_distance = 150.0
+max_neighbors = 20
+time_horizon_agents = 2.0
+time_horizon_obstacles = 1.0
 
 [node name="PathUpdateTimer" type="Timer" parent="."]

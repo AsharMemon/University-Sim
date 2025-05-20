@@ -183,7 +183,7 @@ func _spawn_and_process_new_students(count: int, academic_year: int):
 				# For a more distributed spawn, you might get bounds of a CSGBox or Area3D
 				spawn_position = random_spawn_area_node.global_position 
 		else: # Fallback spawn position if no areas defined
-			spawn_position = Vector3(randf_range(-10, 10), 0.5, randf_range(-10, 10)) # Example random pos
+			spawn_position = Vector3(randf_range(-10, 10), 0.3, randf_range(-10, 10)) # Example random pos
 
 		add_child(student_node_instance) # Add to StudentManager node in scene tree
 		student_node_instance.global_position = spawn_position

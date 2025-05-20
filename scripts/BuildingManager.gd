@@ -954,7 +954,71 @@ func _update_cluster_label(cluster_id_str: String):
 				actual_label.text = str(cluster.current_users) + "/" + str(cluster.total_capacity)
 				actual_label.visible = cluster.total_capacity > 0 # Show only if capacity > 0
 
+# BuildingManager.gd
+# ... (your existing BuildingManager code) ...
 
+# IMPORTANT: Ensure this Y-value matches what's used for student navigation 
+# (e.g., Student.EXPECTED_NAVMESH_Y or AcademicManager.ACADEMIC_MGR_STUDENT_EXPECTED_NAVMESH_Y)
+const BUILDING_EXIT_NAVMESH_Y: float = 0.3 # !!! ADJUST THIS TO YOUR PROJECT'S NAVMESH Y-LEVEL !!!
+
+# This is the new function you need to add:
+func get_building_exit_location(building_id_str: String) -> Vector3:
+	# This print is for your debugging, you can remove it later
+	print("[BuildingManager]: get_building_exit_location called for ID: '" + building_id_str + "'")
+
+	# 'functional_buildings' is assumed to be the dictionary holding your building data,
+	# similar to how it's accessed in AcademicManager's get_available_classrooms()
+	# If your main data structure has a different name, use that here.
+	if not functional_buildings.has(building_id_str):
+		printerr("[BuildingManager]: Building ID '", building_id_str, "' not found in functional_buildings data. Cannot determine exit location.")
+		return Vector3.ZERO # Return ZERO to indicate failure; AcademicManager will use its own fallback.
+
+	var building_data: Dictionary = functional_buildings[building_id_str]
+	
+	# Attempt to get the representative node, which is likely the building's main visual/anchor
+	var rep_node = building_data.get("representative_block_node")
+
+	if not is_instance_valid(rep_node) or not rep_node is Node3D:
+		printerr("[BuildingManager]: Representative node for building '", building_id_str, "' is not a valid Node3D. Cannot determine exit location.")
+		return Vector3.ZERO # Indicate failure
+
+	var building_origin_pos: Vector3 = rep_node.global_position
+
+	# BuildingManager.gd - inside get_building_exit_location, for the offset fallback
+
+	var building_transform: Transform3D = rep_node.global_transform # rep_node.global_transform is correct
+
+			# --- Determine global forward direction based on building's local forward ---
+			# Option A: If your building models have their "front door" pointing along their local -Z axis:
+	var global_front_direction: Vector3 = -building_transform.basis.z
+			
+			# Option B: If their "front door" points along their local +Z axis:
+			# var global_front_direction: Vector3 = building_transform.basis.z
+
+			# Option C: If their "front door" points along their local +X axis:
+			# var global_front_direction: Vector3 = building_transform.basis.x
+			
+			# Option D: If their "front door" points along their local -X axis:
+			# var global_front_direction: Vector3 = -building_transform.basis.x
+
+			# !!! IMPORTANT: Choose only ONE of the above options (A, B, C, or D) 
+			# based on how your building models are oriented.
+			# -Z (Option A) is a common convention for "forward".
+
+	var offset_distance: float = 3.0 # Adjust this distance as needed to clear the building
+										   # This value might need to be larger (e.g., 4.0 or 5.0)
+										   # depending on the size of your buildings from their origin.
+
+	var exit_offset: Vector3 = global_front_direction.normalized() * offset_distance 
+			
+	var calculated_exit_pos: Vector3 = building_transform.origin + exit_offset # Add offset to building's origin
+	var final_exit_position: Vector3 = Vector3(calculated_exit_pos.x, BUILDING_EXIT_NAVMESH_Y, calculated_exit_pos.z)
+	
+	# Ensure the Y-coordinate is at the correct navmesh level
+	
+	print("[BuildingManager]: Calculated exit for '", building_id_str, "' at ", str(final_exit_position))
+	return final_exit_position
+	
 # --- Data Accessors ---
 func get_all_occupied_cells_data() -> Dictionary: return occupied_cells.duplicate(true)
 func get_functional_buildings_data() -> Dictionary: return functional_buildings.duplicate(true)
