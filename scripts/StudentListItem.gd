@@ -1,102 +1,93 @@
 # StudentListItem.gd
 # This script is attached to the root node of StudentListItem.tscn.
-# It populates the UI elements with data from a student node.
+# It populates the UI elements with data from a student info dictionary.
 extends PanelContainer
 
 # --- Node References (Set in Godot Editor or via @onready) ---
-# Ensure these paths match the node structure in your StudentListItem.tscn scene.
 @export var student_name_label: Label
 @export var program_label: Label
 @export var courses_label: Label
-@export var status_label: Label  # Label to show "Status: Enrolled" or "Status: Graduated!"
-@export var credits_label: Label # Label to show "Credits: X / Y"
+@export var status_label: Label
+@export var credits_label: Label
+
+# Optional: Add a student_id_label if you want to display it for debugging
+# @export var student_id_label: Label
 
 func _ready():
-	# This function is called when the node is ready.
-	# It's a good place to check if all required child nodes were found.
+	# Check if all required child nodes were found.
 	if not is_instance_valid(student_name_label):
-		printerr("StudentListItem: StudentNameLabel node not found or path is incorrect in StudentListItem.tscn.")
+		printerr("StudentListItem (%s): StudentNameLabel node not found or path is incorrect." % name)
 	if not is_instance_valid(program_label):
-		printerr("StudentListItem: ProgramLabel node not found or path is incorrect in StudentListItem.tscn.")
+		printerr("StudentListItem (%s): ProgramLabel node not found or path is incorrect." % name)
 	if not is_instance_valid(courses_label):
-		printerr("StudentListItem: CoursesLabel node not found or path is incorrect in StudentListItem.tscn.")
+		printerr("StudentListItem (%s): CoursesLabel node not found or path is incorrect." % name)
 	if not is_instance_valid(status_label):
-		printerr("StudentListItem: StatusLabel node not found or path is incorrect in StudentListItem.tscn. Please add this Label.")
+		printerr("StudentListItem (%s): StatusLabel node not found or path is incorrect." % name)
 	if not is_instance_valid(credits_label):
-		printerr("StudentListItem: CreditsLabel node not found or path is incorrect in StudentListItem.tscn. Please add this Label.")
+		printerr("StudentListItem (%s): CreditsLabel node not found or path is incorrect." % name)
 
-# Call this function from your main UI script (e.g., BuildingManager) 
-# to populate this list item with data from a specific student.
-func set_student_data(student_node: Node):
-	# Fallback text if student_node is invalid.
-	var default_name_text = "Name: Error - Invalid Node"
+# Call this function from your main UI script (e.g., BuildingManager)
+# to populate this list item with data from a specific student's info dictionary.
+func set_student_data(student_info: Dictionary):
+	# Fallback text if student_info is invalid or missing expected fields.
+	var default_name_text = "Name: N/A"
 	var default_program_text = "Program: N/A"
 	var default_courses_text = "Courses: N/A"
 	var default_status_text = "Status: N/A"
 	var default_credits_text = "Credits: N/A"
+	# var default_id_text = "ID: N/A" # If you add an ID label
 
-	if not is_instance_valid(student_node):
-		# If the student node itself is invalid, set all labels to their default error/N/A state.
+	if not student_info is Dictionary or student_info.is_empty():
+		printerr("StudentListItem (%s): Received invalid or empty student_info dictionary." % name)
+		# Set all labels to their default error/N/A state.
 		if is_instance_valid(student_name_label): student_name_label.text = default_name_text
 		if is_instance_valid(program_label): program_label.text = default_program_text
 		if is_instance_valid(courses_label): courses_label.text = default_courses_text
 		if is_instance_valid(status_label): status_label.text = default_status_text
 		if is_instance_valid(credits_label): credits_label.text = default_credits_text
+		# if is_instance_valid(student_id_label): student_id_label.text = default_id_text
 		return
 
-	# Attempt to get data using the get_info_summary() method from the student node.
-	if student_node.has_method("get_info_summary"):
-		var info: Dictionary = student_node.get_info_summary()
-		
-		# Populate Name Label
-		if is_instance_valid(student_name_label):
-			student_name_label.text = "Name: " + info.get("name", "N/A")
-		else:
-			printerr("StudentListItem (" + name + "): student_name_label is null when trying to set student info for " + student_node.name)
+	var student_id_for_log = student_info.get("student_id", "UnknownID") # For better logging
 
-		# Populate Program Label
-		if is_instance_valid(program_label):
-			program_label.text = "Program: " + info.get("program_name", "N/A")
-		else:
-			printerr("StudentListItem (" + name + "): program_label is null when trying to set student info for " + student_node.name)
+	# Populate Name Label
+	if is_instance_valid(student_name_label):
+		student_name_label.text = "Name: " + student_info.get("name", "N/A")
+	else:
+		printerr("StudentListItem (%s): student_name_label is null for student_id: %s" % [name, student_id_for_log])
 
-		# Populate Courses Label
-		if is_instance_valid(courses_label):
-			var current_course_names_list : Array[String] = info.get("current_courses_list", [])
-			if not current_course_names_list.is_empty():
-				courses_label.text = "Taking: " + ", ".join(current_course_names_list)
-			elif info.get("status", "Enrolled") == "Graduated!": # Check status from info dictionary
-				courses_label.text = "Taking: None (Graduated)"
-			else:
-				courses_label.text = "Taking: None"
+	# Populate Program Label
+	if is_instance_valid(program_label):
+		program_label.text = "Program: " + student_info.get("program_name", "N/A")
+	else:
+		printerr("StudentListItem (%s): program_label is null for student_id: %s" % [name, student_id_for_log])
+
+	# Populate Courses Label
+	if is_instance_valid(courses_label):
+		var current_course_names_list: Array[String] = student_info.get("current_courses_list", [])
+		if not current_course_names_list.is_empty():
+			courses_label.text = "Taking: " + ", ".join(current_course_names_list)
+		elif student_info.get("status", "Enrolled") == "Graduated!":
+			courses_label.text = "Taking: None (Graduated)"
 		else:
-			printerr("StudentListItem (" + name + "): courses_label is null when trying to set student info for " + student_node.name)
+			courses_label.text = "Taking: None / Not Specified" # More descriptive for non-graduated
+	else:
+		printerr("StudentListItem (%s): courses_label is null for student_id: %s" % [name, student_id_for_log])
+	
+	# Populate Status Label
+	if is_instance_valid(status_label):
+		status_label.text = "Status: " + student_info.get("status", "Unknown")
+	else:
+		printerr("StudentListItem (%s): status_label is null for student_id: %s" % [name, student_id_for_log])
 		
-		# Populate Status Label
-		if is_instance_valid(status_label):
-			status_label.text = "Status: " + info.get("status", "Unknown")
-		else:
-			printerr("StudentListItem (" + name + "): status_label is null when trying to set student info for " + student_node.name)
-			
-		# Populate Credits Label
-		if is_instance_valid(credits_label):
-			var credits_earned = info.get("credits_earned", 0)
-			var credits_needed = info.get("credits_needed_for_program", 0)
-			credits_label.text = "Credits: " + str(credits_earned) + " / " + str(credits_needed)
-		else:
-			printerr("StudentListItem (" + name + "): credits_label is null when trying to set student info for " + student_node.name)
-			
-	else: 
-		# Fallback if get_info_summary method is not found on the student node.
-		# This indicates a potential issue with the student script or the node being passed.
-		printerr("StudentListItem (" + name + "): Student node " + student_node.name + " does NOT have get_info_summary method. Using fallback display.")
-		if is_instance_valid(student_name_label):
-			student_name_label.text = "Name: " + student_node.name # Use node name as a basic fallback.
-		if is_instance_valid(program_label):
-			program_label.text = "Program: Data Unavailable"
-		if is_instance_valid(courses_label):
-			courses_label.text = "Courses: Data Unavailable"
-		if is_instance_valid(status_label):
-			status_label.text = "Status: Data Unavailable"
-		if is_instance_valid(credits_label):
-			credits_label.text = "Credits: Data Unavailable"
+	# Populate Credits Label
+	if is_instance_valid(credits_label):
+		var credits_earned: float = student_info.get("credits_earned", 0.0)
+		var credits_needed: float = student_info.get("credits_needed_for_program", 0.0)
+		credits_label.text = "Credits: " + ("%.1f" % credits_earned) + " / " + ("%.1f" % credits_needed)
+	else:
+		printerr("StudentListItem (%s): credits_label is null for student_id: %s" % [name, student_id_for_log])
+
+	# Optional: Populate ID Label (if you add one to your .tscn and export it)
+	# if is_instance_valid(student_id_label):
+	# 	student_id_label.text = "ID: " + student_info.get("student_id", "N/A")

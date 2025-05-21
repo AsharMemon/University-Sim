@@ -3,90 +3,81 @@ class_name Student
 extends CharacterBody3D
 
 # --- Debug Logging Control ---
-const DETAILED_LOGGING_ENABLED: bool = true # Set true for verbose logs
+const DETAILED_LOGGING_ENABLED: bool = false
 
 # --- Constants ---
 const MAX_NEED_VALUE: float = 100.0
 const MIN_NEED_VALUE: float = 0.0
-const EXPECTED_NAVMESH_Y: float = 0.3 # IMPORTANT: Verify and set this!
-const MAX_TIME_STUCK_THRESHOLD: float = 15.0 # Seconds to try before giving up on current nav target
+const EXPECTED_NAVMESH_Y: float = 0.3
+const MAX_TIME_STUCK_THRESHOLD: float = 15.0
 
 # --- Core Student Information ---
 var student_id: String = "default_id"
 var student_name: String = "Default Student Name"
 var current_program_id: String = ""
-var academic_start_year: int = 0
-var current_course_enrollments: Dictionary = {} # Stores confirmed enrollments with full details
+var academic_start_year: int = 0 # Calendar year student started university
+var current_course_enrollments: Dictionary = {}
+
+# --- Degree Progression ---
+var degree_progression: DegreeProgression # Will be initialized
 
 # --- State for Preventing Immediate Class Re-entry ---
 var _last_attended_offering_id: String = ""
-var _last_attended_in_visual_slot: String = "" # Visual slot string when they exited the last class
+var _last_attended_in_visual_slot: String = ""
 
 # --- Node References ---
 @onready var navigation_agent: NavigationAgent3D = $NavigationAgent3D
 @onready var label_3d: Label3D = $Label3D
-@export var student_visuals: Node3D # Path to the visual part of the student
-@onready var animation_player: AnimationPlayer = $AnimationPlayer # ASSUMING you have one named this
+@export var student_visuals: Node3D
+@onready var animation_player: AnimationPlayer = $AnimationPlayer
 
 # --- Needs, Activity, Managers ---
 var needs: Dictionary = { "energy": 100.0, "rest": 100.0, "study_urge": 0.0 }
 var current_activity: String = "idle"
-var current_activity_target_data: Variant = null # For storing data about class, dorm, etc.
-# var current_target_node_id: String = "" # Not directly used in this version's decision logic much
-
-var time_spent_in_current_activity_visual: float = 0.0 # Used by AcademicManager for off-map simulation
+var current_activity_target_data: Variant = null
+var time_spent_in_current_activity_visual: float = 0.0
 var time_stuck_trying_to_reach_target: float = 0.0
 
-# Manager References (set in initialize_new_student)
 var academic_manager_ref: AcademicManager
 var university_data_ref: UniversityData
 var time_manager_ref: TimeManager
-var building_manager_ref: BuildingManager
+var building_manager_ref: BuildingManager # Assigned via AcademicManager
 
 # --- Movement ---
-@export var base_move_speed: float = 3.0 # Base speed
-var current_calculated_move_speed: float = 3.0 # Adjusted by TimeManager speed
-var current_target_position: Vector3 # Target from navigation_agent
+@export var base_move_speed: float = 3.0
+var current_calculated_move_speed: float = 3.0
+var current_target_position: Vector3
 
 # --- Signals ---
-signal student_despawn_data_for_manager(data: Dictionary) # Emitted before queue_free
-
+signal student_despawn_data_for_manager(data: Dictionary)
 
 func _ready():
 	if not is_instance_valid(navigation_agent):
 		printerr("[%s] CRITICAL: NavigationAgent3D node not found!" % self.name)
 	else:
-		# Initialize target to current position to prevent agent from moving initially
-		navigation_agent.set_target_position(global_position) 
+		navigation_agent.set_target_position(global_position)
 		if not navigation_agent.is_connected("navigation_finished", Callable(self, "_on_navigation_agent_navigation_finished")):
 			navigation_agent.navigation_finished.connect(Callable(self, "_on_navigation_agent_navigation_finished"))
 			
-	if is_instance_valid(label_3d): 
+	if is_instance_valid(label_3d):
 		label_3d.text = student_name if not student_name.is_empty() else "Student"
 	
 	if not is_instance_valid(student_visuals):
-		printerr("[%s] CRITICAL: Student visuals node not found! Visibility cannot be changed." % self.name)
+		printerr("[%s] CRITICAL: Student visuals node not found!" % self.name)
 	else:
-		student_visuals.visible = true 
+		student_visuals.visible = true
 
 	if not is_instance_valid(animation_player):
-		print_debug_student("Warning: AnimationPlayer node not found. Animations won't play or scale with speed.")
+		print_debug_student("Warning: AnimationPlayer node not found.")
 
-	current_calculated_move_speed = base_move_speed # Initialize with base speed
-	velocity = Vector3.ZERO # Ensure velocity starts at zero
+	current_calculated_move_speed = base_move_speed
+	velocity = Vector3.ZERO
 
-	# Connect to TimeManager speed changes if possible
-	# This assumes initialize_new_student (which sets time_manager_ref) is called before/during the first _ready effectively
-	# Or that this connection is re-attempted if time_manager_ref is initially null.
-	# A better place for this connection might be after initialize_new_student is confirmed.
-	# For now, let's keep it here and ensure time_manager_ref is set early.
-	if is_instance_valid(time_manager_ref): # This check might be too early in _ready
+	if is_instance_valid(time_manager_ref):
 		_connect_to_time_manager_speed_signal()
-	# else: student will try to connect in initialize_new_student too
 
 	if DETAILED_LOGGING_ENABLED: print_debug_student("Node _ready(). Initial global_position: " + str(global_position))
 	call_deferred("check_spawn_position_on_navmesh")
-
 
 func check_spawn_position_on_navmesh():
 	await get_tree().physics_frame 
@@ -121,16 +112,16 @@ func _connect_to_time_manager_speed_signal():
 	elif DETAILED_LOGGING_ENABLED:
 		print_debug_student("WARNING: TimeManager reference not valid, cannot connect speed_changed or get initial speed.")
 
-
-func initialize_new_student(s_id: String, s_name: String, prog_id: String, start_year: int,
+func initialize_new_student(s_id: String, s_name: String, prog_id: String, start_year_cal: int,
 						 acad_man: AcademicManager, univ_data: UniversityData, time_man: TimeManager,
-						 just_exited_offering_id: String = "", current_visual_slot_when_exited: String = ""):
+						 just_exited_offering_id: String = "", current_visual_slot_when_exited: String = "",
+						 restored_degree_prog_summary: Dictionary = {}): # Added for restoration
 	if DETAILED_LOGGING_ENABLED: print_debug_student("Initialize New Student START for: " + s_name + " ID: " + s_id)
 	self.student_id = s_id
 	self.student_name = s_name
-	self.name = "Student_%s_%s" % [s_name.replace(" ", "_").to_lower(), s_id.right(4)] # Set node name
+	self.name = "Student_%s_%s" % [s_name.replace(" ", "_").to_lower(), s_id.right(4)]
 	self.current_program_id = prog_id
-	self.academic_start_year = start_year
+	self.academic_start_year = start_year_cal # This is the calendar year they joined the Uni
 	
 	self.academic_manager_ref = acad_man
 	self.university_data_ref = univ_data
@@ -138,48 +129,76 @@ func initialize_new_student(s_id: String, s_name: String, prog_id: String, start
 
 	if is_instance_valid(self.academic_manager_ref):
 		self.building_manager_ref = self.academic_manager_ref.building_manager
-		# Connect despawn signal
 		if self.academic_manager_ref.has_method("_on_student_despawned"):
 			if not self.is_connected("student_despawn_data_for_manager", Callable(self.academic_manager_ref, "_on_student_despawned")):
 				var err_code = self.student_despawn_data_for_manager.connect(Callable(self.academic_manager_ref, "_on_student_despawned"))
-				if err_code == OK and DETAILED_LOGGING_ENABLED:
-					print_debug_student("Successfully connected student_despawn_data_for_manager to AcademicManager._on_student_despawned.")
-				elif err_code != OK:
-					print_debug_student("ERROR connecting student_despawn_data_for_manager. Error code: " + str(err_code))
-		elif DETAILED_LOGGING_ENABLED:
-			print_debug_student("WARNING: AcademicManager ref does NOT have _on_student_despawned method during init.")
+				if err_code != OK:
+					print_debug_student("ERROR connecting student_despawn_data_for_manager. Code: " + str(err_code))
 	else:
 		if DETAILED_LOGGING_ENABLED: print_debug_student("ERROR: academic_manager_ref is NOT a valid instance in initialize_new_student.")
-
 
 	self._last_attended_offering_id = just_exited_offering_id
 	self._last_attended_in_visual_slot = current_visual_slot_when_exited
 	if DETAILED_LOGGING_ENABLED and not _last_attended_offering_id.is_empty():
 		print_debug_student("Initialized after exiting offering " + _last_attended_offering_id + " during visual slot " + _last_attended_in_visual_slot)
 
-	if not is_instance_valid(time_manager_ref): 
+	if not is_instance_valid(time_manager_ref):
 		printerr("[%s] CRITICAL: TimeManager ref not passed or invalid in init!" % self.name)
 	else:
-		# Connect to TimeManager speed changes if not already done in _ready or if TM ref was initially null
 		if not time_manager_ref.is_connected("speed_changed", Callable(self, "_on_time_manager_speed_changed")):
-			_connect_to_time_manager_speed_signal() # Attempt connection again
-		# Connect to visual hour changed for needs updates etc.
+			_connect_to_time_manager_speed_signal()
 		if time_manager_ref.has_signal("visual_hour_slot_changed"):
 			if not time_manager_ref.is_connected("visual_hour_slot_changed", Callable(self, "_on_visual_hour_changed")):
 				time_manager_ref.visual_hour_slot_changed.connect(Callable(self, "_on_visual_hour_changed"))
 
-	if not is_instance_valid(building_manager_ref): 
-		if DETAILED_LOGGING_ENABLED: print_debug_student("Warning: BuildingManager ref not available after init.")
+	if not is_instance_valid(building_manager_ref) and DETAILED_LOGGING_ENABLED:
+		print_debug_student("Warning: BuildingManager ref not available after init.")
 
-	if is_instance_valid(label_3d): label_3d.text = self.student_name # Update label with actual name
+	if is_instance_valid(label_3d): label_3d.text = self.student_name
 	
-	# Initialize needs (or they could be passed in if re-instantiating with saved state)
 	needs["energy"] = MAX_NEED_VALUE
 	needs["rest"] = MAX_NEED_VALUE
 	needs["study_urge"] = randf_range(20.0, 50.0)
 	
-	self.velocity = Vector3.ZERO # Ensure velocity is zero at init
+	# --- DegreeProgression Initialization/Restoration ---
+	if is_instance_valid(self.degree_progression): # If re-initializing an existing student node that already had one
+		if DETAILED_LOGGING_ENABLED: print_debug_student("DegreeProgression node already exists for " + s_name)
+		# Ensure it's up-to-date if restored_degree_prog_summary is provided
+		if not restored_degree_prog_summary.is_empty():
+			self.degree_progression.student_id = s_id # Ensure IDs match
+			self.degree_progression.program_id = prog_id
+			self.degree_progression.current_academic_year_in_program = restored_degree_prog_summary.get("current_academic_year", 1)
+			self.degree_progression.current_semester_in_program = restored_degree_prog_summary.get("current_semester", 1)
+			self.degree_progression.total_credits_earned = restored_degree_prog_summary.get("total_credits_earned", 0.0)
+			self.degree_progression.is_graduated = restored_degree_prog_summary.get("is_graduated", false)
+			self.degree_progression.course_records = restored_degree_prog_summary.get("course_records", {}).duplicate(true)
+			if DETAILED_LOGGING_ENABLED: print_debug_student("Restored DegreeProgression for " + s_name + " from summary.")
+	else: # Standard initialization for a new student or first time for this node
+		var starting_academic_year_in_prog = 1
+		var starting_semester_in_prog = 1
+		if not restored_degree_prog_summary.is_empty():
+			starting_academic_year_in_prog = restored_degree_prog_summary.get("current_academic_year", 1)
+			starting_semester_in_prog = restored_degree_prog_summary.get("current_semester", 1)
+			if DETAILED_LOGGING_ENABLED: print_debug_student("Using year/semester from restored summary for new DegreeProgression node for " + s_name)
+		elif is_instance_valid(time_man): # For brand new students, determine based on current game term
+			var current_term_enum = time_man.get_current_academic_term_enum()
+			if current_term_enum == TimeManager.AcademicTerm.SPRING:
+				starting_semester_in_prog = 2
+			elif current_term_enum == TimeManager.AcademicTerm.SUMMER:
+				starting_semester_in_prog = 3
+		
+		self.degree_progression = DegreeProgression.new(s_id, prog_id, starting_academic_year_in_prog, starting_semester_in_prog)
+		add_child(self.degree_progression)
+		
+		if not restored_degree_prog_summary.is_empty(): # If we created it new but had summary data
+			self.degree_progression.total_credits_earned = restored_degree_prog_summary.get("total_credits_earned", 0.0)
+			self.degree_progression.is_graduated = restored_degree_prog_summary.get("is_graduated", false)
+			self.degree_progression.course_records = restored_degree_prog_summary.get("course_records", {}).duplicate(true)
+			if DETAILED_LOGGING_ENABLED: print_debug_student("Populated new DegreeProgression for " + s_name + " with summary data.")
+		elif DETAILED_LOGGING_ENABLED:
+			print_debug_student("New DegreeProgression initialized for %s. Program Year: %d, Semester: %d" % [s_name, starting_academic_year_in_prog, starting_semester_in_prog])
 
+	self.velocity = Vector3.ZERO
 	if DETAILED_LOGGING_ENABLED: print_debug_student("Initialize New Student END for: " + s_name + ". TM valid: " + str(is_instance_valid(time_manager_ref)))
 
 # Called by StudentManager after spawning and initial enrollment
@@ -397,119 +416,122 @@ func navigate_to_target(target_pos_from_ai: Vector3):
 
 func _on_navigation_agent_navigation_finished():
 	if DETAILED_LOGGING_ENABLED: print_debug_student("Navigation FINISHED. Reached target for activity: '%s'." % current_activity)
-	velocity = Vector3.ZERO 
-	# time_spent_in_current_activity_visual = 0.0 # Reset by set_activity or external manager
+	velocity = Vector3.ZERO
 
-	var previous_activity_on_arrival = current_activity 
+	var previous_activity_on_arrival = current_activity
 	var target_data_on_arrival = current_activity_target_data
 	
+	var despawn_activity_type = ""
+	var building_id_for_despawn = "" # This will be the cluster_id or building_id
+	var can_enter_and_despawn = true # Assume can enter unless BM says otherwise
+
 	match previous_activity_on_arrival:
 		"going_to_class":
-			if DETAILED_LOGGING_ENABLED: print_debug_student("Arrived at class location for offering: %s." % str(target_data_on_arrival))
-			var can_enter_and_despawn = true
-			var classroom_id_for_despawn_info = ""
+			despawn_activity_type = "in_class"
 			if target_data_on_arrival is Dictionary:
-				classroom_id_for_despawn_info = target_data_on_arrival.get("classroom_id", "UNKNOWN_CLASS_ID")
-
-			if is_instance_valid(building_manager_ref) and target_data_on_arrival is Dictionary:
-				var c_id = target_data_on_arrival.get("classroom_id")
-				if c_id:
-					if not building_manager_ref.student_entered_functional_building(c_id):
-						if DETAILED_LOGGING_ENABLED: print_debug_student("WARNING: BM reported classroom " + c_id + " was full. Student " + student_name + " will NOT despawn and will become idle.")
-						can_enter_and_despawn = false
-					elif DETAILED_LOGGING_ENABLED: print_debug_student("Notified BM of entry to classroom: " + c_id)
-				else:
-					if DETAILED_LOGGING_ENABLED: print_debug_student("WARNING: No classroom_id in target_data for " + student_name + ". Cannot notify BM. Will not despawn.")
+				building_id_for_despawn = target_data_on_arrival.get("classroom_id", "UNKNOWN_CLASS_ID")
+			
+			if is_instance_valid(building_manager_ref) and not building_id_for_despawn.begins_with("UNKNOWN"):
+				if not building_manager_ref.student_entered_functional_building(building_id_for_despawn):
 					can_enter_and_despawn = false
+					if DETAILED_LOGGING_ENABLED: print_debug_student("Classroom " + building_id_for_despawn + " full. Cannot enter. Will idle.")
 			elif not is_instance_valid(building_manager_ref) and DETAILED_LOGGING_ENABLED:
-				print_debug_student("WARNING: BuildingManager ref invalid for " + student_name + ". Assuming entry allowed but cannot notify BM.")
-			
-			if can_enter_and_despawn:
-				if DETAILED_LOGGING_ENABLED: print_debug_student("PREPARING DESPAWN for " + student_name + " (going_to_class). Building: " + classroom_id_for_despawn_info)
-				var despawn_info = {
-					"student_id": student_id, "student_name": student_name,
-					"current_program_id": current_program_id, "academic_start_year": academic_start_year,
-					"current_course_enrollments": current_course_enrollments.duplicate(true),
-					"needs": needs.duplicate(true),
-					"activity_after_despawn": "in_class", 
-					"activity_target_data": target_data_on_arrival.duplicate(true) if target_data_on_arrival is Dictionary else target_data_on_arrival,
-					"building_id": classroom_id_for_despawn_info 
-				}
-				if DETAILED_LOGGING_ENABLED: print_debug_student("PRE-EMIT: About to emit student_despawn_data_for_manager for " + student_id + ". Data: " + str(despawn_info))
-				emit_signal("student_despawn_data_for_manager", despawn_info)
-				if DETAILED_LOGGING_ENABLED: print_debug_student("POST-EMIT: Signal student_despawn_data_for_manager EMITTED for " + student_id + ". Now queue_free.")
-				queue_free() 
-				return 
-			else: 
-				set_activity("idle")
-				call_deferred("_decide_next_activity")
-				return
+				print_debug_student("BM invalid while going to class, assuming entry for " + building_id_for_despawn)
 
-		"going_to_rest": # Similar logic for going_to_rest
-			if DETAILED_LOGGING_ENABLED: print_debug_student("Arrived at dorm location " + str(target_data_on_arrival))
-			var can_enter_dorm_and_despawn = true
-			var dorm_id_for_despawn_info = ""
+
+		"going_to_rest":
+			despawn_activity_type = "resting"
 			if target_data_on_arrival is Dictionary:
-				dorm_id_for_despawn_info = target_data_on_arrival.get("building_id", "UNKNOWN_DORM_ID")
+				building_id_for_despawn = target_data_on_arrival.get("building_id", "UNKNOWN_DORM_ID")
 
-			if is_instance_valid(building_manager_ref) and target_data_on_arrival is Dictionary:
-				var d_id = target_data_on_arrival.get("building_id")
-				if d_id:
-					if not building_manager_ref.student_entered_functional_building(d_id):
-						can_enter_dorm_and_despawn = false; # Log in set_activity if needed
-						if DETAILED_LOGGING_ENABLED: print_debug_student("Dorm full, cannot enter %s " % d_id)
-				else: can_enter_dorm_and_despawn = false; # Log in set_activity if needed
-			
-			if can_enter_dorm_and_despawn:
-				var despawn_info = {
-					"student_id": student_id, "student_name": student_name,
-					"current_program_id": current_program_id, "academic_start_year": academic_start_year,
-					"current_course_enrollments": current_course_enrollments.duplicate(true),
-					"needs": needs.duplicate(true),
-					"activity_after_despawn": "resting", 
-					"activity_target_data": target_data_on_arrival.duplicate(true) if target_data_on_arrival is Dictionary else target_data_on_arrival,
-					"building_id": dorm_id_for_despawn_info
-				}
-				emit_signal("student_despawn_data_for_manager", despawn_info)
-				queue_free(); return
-			else:
-				set_activity("idle"); call_deferred("_decide_next_activity"); return
+			if is_instance_valid(building_manager_ref) and not building_id_for_despawn.begins_with("UNKNOWN"):
+				if not building_manager_ref.student_entered_functional_building(building_id_for_despawn):
+					can_enter_and_despawn = false
+					if DETAILED_LOGGING_ENABLED: print_debug_student("Dorm " + building_id_for_despawn + " full. Cannot enter. Will idle.")
+			elif not is_instance_valid(building_manager_ref) and DETAILED_LOGGING_ENABLED:
+				print_debug_student("BM invalid while going to rest, assuming entry for " + building_id_for_despawn)
 
-		"going_to_study": # Similar logic for going_to_study
-			if DETAILED_LOGGING_ENABLED: print_debug_student("Arrived at study location " + str(target_data_on_arrival))
-			var can_enter_study_and_despawn = true
-			var study_bldg_id_for_despawn_info = ""
+
+		"going_to_study":
+			despawn_activity_type = "studying"
 			if target_data_on_arrival is Dictionary:
-				study_bldg_id_for_despawn_info = target_data_on_arrival.get("building_id", "UNKNOWN_STUDY_ID")
+				building_id_for_despawn = target_data_on_arrival.get("building_id", "UNKNOWN_STUDY_ID")
 
-			if is_instance_valid(building_manager_ref) and target_data_on_arrival is Dictionary:
-				var b_id = target_data_on_arrival.get("building_id")
-				if b_id:
-					if not building_manager_ref.student_entered_functional_building(b_id):
-						can_enter_study_and_despawn = false; # Log in set_activity if needed
-						if DETAILED_LOGGING_ENABLED: print_debug_student("Study location full, cannot enter %s " % b_id)
-				else: can_enter_study_and_despawn = false; # Log in set_activity if needed
-
-			if can_enter_study_and_despawn:
-				var despawn_info = {
-					"student_id": student_id, "student_name": student_name,
-					"current_program_id": current_program_id, "academic_start_year": academic_start_year,
-					"current_course_enrollments": current_course_enrollments.duplicate(true),
-					"needs": needs.duplicate(true),
-					"activity_after_despawn": "studying", 
-					"activity_target_data": target_data_on_arrival.duplicate(true) if target_data_on_arrival is Dictionary else target_data_on_arrival,
-					"building_id": study_bldg_id_for_despawn_info
-				}
-				emit_signal("student_despawn_data_for_manager", despawn_info)
-				queue_free(); return
-			else:
-				set_activity("idle"); call_deferred("_decide_next_activity"); return
-		_: 
-			# For activities like wandering, or if a "going_to_X" failed entry and became idle before this ran
+			if is_instance_valid(building_manager_ref) and not building_id_for_despawn.begins_with("UNKNOWN"):
+				if not building_manager_ref.student_entered_functional_building(building_id_for_despawn):
+					can_enter_and_despawn = false
+					if DETAILED_LOGGING_ENABLED: print_debug_student("Study location " + building_id_for_despawn + " full. Cannot enter. Will idle.")
+			elif not is_instance_valid(building_manager_ref) and DETAILED_LOGGING_ENABLED:
+				print_debug_student("BM invalid while going to study, assuming entry for " + building_id_for_despawn)
+		_:
+			# For activities like wandering, or if a "going_to_X" failed entry and became idle
 			if DETAILED_LOGGING_ENABLED and not (previous_activity_on_arrival in ["idle", "wandering_campus", "wandering_tired", "wandering_anxious"]):
 				print_debug_student("Reached target for non-despawn activity '" + previous_activity_on_arrival + "'. Setting to idle and re-deciding.")
-			set_activity("idle") 
+			set_activity("idle")
 			call_deferred("_decide_next_activity")
+			return # Exit function as no despawn for these activities
+
+	# --- Despawn Logic ---
+	if not despawn_activity_type.is_empty() and can_enter_and_despawn:
+		if DETAILED_LOGGING_ENABLED: print_debug_student("Preparing to emit despawn data for " + student_name + " (" + previous_activity_on_arrival + "). Building: " + building_id_for_despawn)
+		
+		var full_despawn_data: Dictionary = {}
+		# 1. Get base data from get_info_summary (which should include some degree progression elements)
+		if self.has_method("get_info_summary"):
+			full_despawn_data = get_info_summary()
+		else: # Basic fallback if method is missing (should not happen)
+			full_despawn_data = {
+				"name": student_name, "student_name": student_name, "student_id": student_id,
+				"program_id": current_program_id, "program_name": "N/A",
+				"current_courses_list": [], "status": "Enrolled",
+				"credits_earned": 0.0, "credits_needed_for_program": 0.0
+			}
+
+		# 2. Add/Overwrite with more detailed/internal data needed for simulation & re-instantiation
+		full_despawn_data["student_id"] = student_id # Ensure it's definitely there
+		full_despawn_data["current_program_id"] = current_program_id
+		full_despawn_data["academic_start_year"] = academic_start_year
+		full_despawn_data["current_course_enrollments"] = current_course_enrollments.duplicate(true)
+		full_despawn_data["needs"] = needs.duplicate(true)
+		full_despawn_data["activity_after_despawn"] = despawn_activity_type
+		full_despawn_data["activity_target_data"] = target_data_on_arrival.duplicate(true) if target_data_on_arrival is Dictionary else target_data_on_arrival
+		full_despawn_data["building_id"] = building_id_for_despawn # This is the cluster ID
+		
+		# 3. Ensure the full degree progression summary is explicitly included
+		if is_instance_valid(degree_progression) and degree_progression.has_method("get_summary"):
+			full_despawn_data["degree_progression_summary"] = degree_progression.get_summary()
+		else:
+			full_despawn_data["degree_progression_summary"] = {} # Empty dict if not available
+			if DETAILED_LOGGING_ENABLED: print_debug_student("WARNING: DegreeProgression node or get_summary method invalid for student " + student_id + " during despawn prep.")
+			
+		if DETAILED_LOGGING_ENABLED: print_debug_student("PRE-EMIT student_despawn_data_for_manager. Data Keys: " + str(full_despawn_data.keys()))
+		emit_signal("student_despawn_data_for_manager", full_despawn_data)
+		
+		# The Student node makes itself inactive. AcademicManager will call queue_free().
+		# This node will be removed from StudentManager's active_student_nodes_cache
+		# by StudentManager when it processes the student_despawn_data_for_manager signal
+		# (via its _on_student_node_data_update_requested handler).
+		if is_instance_valid(student_visuals):
+			student_visuals.visible = false
+		self.process_mode = Node.PROCESS_MODE_DISABLED # Stop _process, _physics_process
+		navigation_agent.set_target_position(global_position) # Stop any ongoing navigation
+		velocity = Vector3.ZERO
+		
+		if DETAILED_LOGGING_ENABLED: print_debug_student("Node hidden/disabled. Awaiting queue_free() from AcademicManager after data processing.")
+		return # Important: return here to prevent falling through to idle logic
+		
+	elif not despawn_activity_type.is_empty() and not can_enter_and_despawn:
+		# Building was full or some other reason prevented entry
+		if DETAILED_LOGGING_ENABLED: print_debug_student("Entry to " + despawn_activity_type + " at " + building_id_for_despawn + " denied. Setting to idle.")
+		set_activity("idle") # Become idle and rethink
+		call_deferred("_decide_next_activity")
+		return
+
+	# Fallback if no specific despawn action matched but navigation finished for some other reason
+	# (e.g., wandering, or an activity that doesn't lead to despawn)
+	if DETAILED_LOGGING_ENABLED: print_debug_student("Navigation finished for activity '" + previous_activity_on_arrival + "', not a despawn type or entry denied. Setting to idle.")
+	set_activity("idle")
+	call_deferred("_decide_next_activity")
 
 
 func set_activity(new_activity_name: String, target_info: Variant = null):
@@ -734,7 +756,7 @@ func _decide_next_activity():
 
 	if not is_instance_valid(time_manager_ref):
 		print_debug_student("CRITICAL ERROR in _decide_next_activity: time_manager_ref is NULL or invalid. Cannot proceed.")
-		return
+		return # Cannot make decisions without time
 	if not is_instance_valid(academic_manager_ref):
 		print_debug_student("CRITICAL ERROR in _decide_next_activity: academic_manager_ref is NULL or invalid. Cannot proceed.")
 		return
@@ -742,17 +764,17 @@ func _decide_next_activity():
 		print_debug_student("CRITICAL ERROR in _decide_next_activity: navigation_agent is NULL or invalid. Cannot navigate.")
 		return
 
-	if DETAILED_LOGGING_ENABLED:
-		print_debug_student("--- FULL _decide_next_activity START --- Current Activity: " + current_activity + 
-							", Pos: " + str(global_position.round()) + 
-							", Energy:%.1f, Rest:%.1f, StudyUrge:%.1f" % [needs.energy, needs.rest, needs.study_urge])
+	# Declaration of action_taken
+	var action_taken: bool = false # <<< THIS WAS MISSING
 
-	var action_taken: bool = false
+	if DETAILED_LOGGING_ENABLED:
+		print_debug_student("--- FULL _decide_next_activity START --- Current Activity: " + current_activity +
+							", Pos: " + str(global_position.round()) +
+							", Energy:%.1f, Rest:%.1f, StudyUrge:%.1f" % [needs.energy, needs.rest, needs.study_urge])
 
 	# 1. Check for *IMMEDIATELY STARTING* scheduled classes
 	var current_class_id = _get_current_visual_class_offering()
 	if not current_class_id.is_empty():
-		action_taken = true 
 		var class_details = current_course_enrollments.get(current_class_id, {})
 		var schedule_info = class_details.get("schedule_info", {})
 		var classroom_id = schedule_info.get("classroom_id")
@@ -760,20 +782,22 @@ func _decide_next_activity():
 
 		if classroom_id == null or str(classroom_id).is_empty():
 			if DETAILED_LOGGING_ENABLED: print_debug_student("  Action: Found CURRENT class '" + course_name + "' but classroom_id is missing/invalid. Will not attend.")
-			action_taken = false 
+			# action_taken remains false
 		else:
 			var classroom_location: Vector3 = academic_manager_ref.get_classroom_location(str(classroom_id))
 			if classroom_location != Vector3.ZERO:
 				set_activity("going_to_class", {"offering_id": current_class_id, "classroom_id": str(classroom_id), "destination_name": "Class: " + course_name})
 				navigate_to_target(classroom_location)
 				if DETAILED_LOGGING_ENABLED: print_debug_student("  ACTION TAKEN: Going to CURRENT CLASS - " + course_name + " in " + str(classroom_id))
+				action_taken = true # Set action_taken to true
 			else:
 				if DETAILED_LOGGING_ENABLED: print_debug_student("  Action: Found CURRENT class '" + course_name + "' but classroom location (ID: " + str(classroom_id) + ") unknown or full. Will not attend.")
-				action_taken = false
-		if action_taken: return
+				# action_taken remains false
+		if action_taken: return # Return if action was taken
 
 	# 2. Check if need to PREPARE for an UPCOMING class (if current minute is >= 50)
-	if is_instance_valid(time_manager_ref) and time_manager_ref.get_current_simulation_minute() >= 50:
+	# Ensure time_manager_ref is valid before calling get_current_simulation_minute()
+	if not action_taken and is_instance_valid(time_manager_ref) and time_manager_ref.get_current_simulation_minute() >= 50 :
 		if DETAILED_LOGGING_ENABLED: print_debug_student("  No current class. Checking for UPCOMING class (minute >= 50)...")
 		var upcoming_data: Dictionary = _get_next_class_to_prepare_for()
 
@@ -800,66 +824,138 @@ func _decide_next_activity():
 		if action_taken: return
 
 	# 3. Check critical need: Rest
-	if needs.get("energy", MAX_NEED_VALUE) < 25.0 or needs.get("rest", MAX_NEED_VALUE) < 30.0:
-		if current_activity != "resting" and current_activity != "going_to_rest": 
+	if not action_taken and (needs.get("energy", MAX_NEED_VALUE) < 25.0 or needs.get("rest", MAX_NEED_VALUE) < 30.0):
+		if current_activity != "resting" and current_activity != "going_to_rest":
 			if DETAILED_LOGGING_ENABLED: print_debug_student("  Needs: Low Energy/Rest. Attempting to find dorm.")
 			if _find_and_go_to_functional_building("going_to_rest", "dorm"):
 				if DETAILED_LOGGING_ENABLED: print_debug_student("  ACTION TAKEN: Going to REST (Low Energy/Rest).")
 				action_taken = true
-			else: 
-				if current_activity != "wandering_tired":
+			elif current_activity != "wandering_tired": # Only switch to wandering_tired if not already doing it and dorm find failed
 					if DETAILED_LOGGING_ENABLED: print_debug_student("  Needs: Critically need rest but no dorm. Setting to 'wandering_tired'.")
-					set_activity("wandering_tired") 
-					action_taken = true 
+					set_activity("wandering_tired") # Student will wander and hopefully find a dorm later or needs decay
+					action_taken = true # Activity set, so action is taken
 		if action_taken: return
 
-	# 4. Check need: Study 
-	if needs.get("study_urge", MIN_NEED_VALUE) > 75.0: 
+	# 4. Check need: Study
+	if not action_taken and needs.get("study_urge", MIN_NEED_VALUE) > 75.0:
 		if current_activity != "studying" and current_activity != "going_to_study":
 			if DETAILED_LOGGING_ENABLED: print_debug_student("  Needs: High Study Urge. Attempting to find library/study spot.")
-			if _find_and_go_to_functional_building("going_to_study", "library"): 
+			if _find_and_go_to_functional_building("going_to_study", "library"):
 				if DETAILED_LOGGING_ENABLED: print_debug_student("  ACTION TAKEN: Going to STUDY (High Urge).")
 				action_taken = true
-			else: 
-				if current_activity != "wandering_anxious": 
+			elif current_activity != "wandering_anxious": # Only switch if not already doing it and study spot find failed
 					if DETAILED_LOGGING_ENABLED: print_debug_student("  Needs: High urge to study but no study loc. Setting to 'wandering_anxious'.")
 					set_activity("wandering_anxious")
 					action_taken = true
 		if action_taken: return
 
 	# 5. Fallback Action: Wander
-	var wandering_states = ["idle", "wandering_campus", "wandering_tired", "wandering_anxious"]
-	var needs_new_wander_target = false
-	if current_activity == "idle":
-		needs_new_wander_target = true
-	elif wandering_states.has(current_activity): # If already wandering, check if target is problematic
-		if not is_instance_valid(navigation_agent) or navigation_agent.is_navigation_finished() or \
-		   navigation_agent.get_target_position() == global_position or not navigation_agent.is_target_reachable():
+	# This block will only be reached if no other action has been taken yet.
+	if not action_taken:
+		var wandering_states = ["idle", "wandering_campus", "wandering_tired", "wandering_anxious"] # Include idle
+		var needs_new_wander_target = false
+
+		if current_activity == "idle": # If idle, definitely needs a new target
 			needs_new_wander_target = true
-			if DETAILED_LOGGING_ENABLED: print_debug_student("  Wander state (" + current_activity + ") needs new target (finished, at target, or unreachable).")
+			if DETAILED_LOGGING_ENABLED: print_debug_student("  Fallback: Was idle, deciding to WANDER.")
+		elif wandering_states.has(current_activity): # If already wandering, check if target is problematic
+			if not is_instance_valid(navigation_agent) or \
+			   navigation_agent.is_navigation_finished() or \
+			   navigation_agent.get_target_position() == global_position or \
+			   not navigation_agent.is_target_reachable():
+				needs_new_wander_target = true
+				if DETAILED_LOGGING_ENABLED: print_debug_student("  Wander state (" + current_activity + ") needs new target (finished, at target, or unreachable).")
+		else: # If current activity is none of the above (e.g. some other state that finished without a clear next step)
+			needs_new_wander_target = true
+			if DETAILED_LOGGING_ENABLED: print_debug_student("  Fallback: Current activity '" + current_activity + "' not a priority, deciding to WANDER.")
 
 
-	if needs_new_wander_target:
-		if DETAILED_LOGGING_ENABLED: print_debug_student("  Fallback: Deciding to WANDER. Previous state: " + current_activity)
-		set_activity("wandering_campus") 
+		if needs_new_wander_target:
+			# Determine wander type based on needs, or default to general wander
+			var wander_activity_to_set = "wandering_campus"
+			if needs.get("energy", MAX_NEED_VALUE) < 35.0 or needs.get("rest", MAX_NEED_VALUE) < 40.0:
+				wander_activity_to_set = "wandering_tired"
+			elif needs.get("study_urge", MIN_NEED_VALUE) > 65.0: # Slightly lower threshold for anxious wandering
+				wander_activity_to_set = "wandering_anxious"
 
-		var wander_offset_x = randf_range(-15.0, 15.0) 
-		var wander_offset_z = randf_range(-15.0, 15.0)
-		if abs(wander_offset_x) < 2.0 and abs(wander_offset_z) < 2.0:
-			var r_sign_x = 1.0 if randf() > 0.5 else -1.0
-			var r_sign_z = 1.0 if randf() > 0.5 else -1.0
-			wander_offset_x = r_sign_x * randf_range(5.0, 10.0)
-			wander_offset_z = r_sign_z * randf_range(5.0, 10.0)
+			set_activity(wander_activity_to_set)
 
-		var nav_y = EXPECTED_NAVMESH_Y 
-		var new_wander_target = Vector3(global_position.x + wander_offset_x, nav_y, global_position.z + wander_offset_z)
-									
-		if DETAILED_LOGGING_ENABLED: print_debug_student("  ACTION TAKEN: Setting NEW wander target to: %s (from current pos %s)" % [str(new_wander_target.round()), str(global_position.round())])
-		navigate_to_target(new_wander_target)
-		action_taken = true
-		# No return here, let it fall to end log
+			var wander_offset_x = randf_range(-15.0, 15.0)
+			var wander_offset_z = randf_range(-15.0, 15.0)
+			if abs(wander_offset_x) < 2.0 and abs(wander_offset_z) < 2.0: # Ensure it's a decent distance
+				var r_sign_x = 1.0 if randf() > 0.5 else -1.0
+				var r_sign_z = 1.0 if randf() > 0.5 else -1.0
+				wander_offset_x = r_sign_x * randf_range(5.0, 10.0)
+				wander_offset_z = r_sign_z * randf_range(5.0, 10.0)
 
+			var nav_y = EXPECTED_NAVMESH_Y
+			var new_wander_target = Vector3(global_position.x + wander_offset_x, nav_y, global_position.z + wander_offset_z)
+
+			if DETAILED_LOGGING_ENABLED: print_debug_student("  ACTION TAKEN: Setting NEW " + wander_activity_to_set + " target to: %s (from current pos %s)" % [str(new_wander_target.round()), str(global_position.round())])
+			navigate_to_target(new_wander_target)
+			action_taken = true # Mark action as taken
+			# No return here, let it fall to end log for this branch
+
+	# Final check and log after all decision branches
 	if not action_taken and DETAILED_LOGGING_ENABLED: # Should ideally not be reached if wander is a true fallback
-		print_debug_student("  WARNING: _decide_next_activity FINISHED WITH NO ACTION TAKEN! Current activity: " + current_activity)
+		print_debug_student("  WARNING: _decide_next_activity FINISHED WITH NO ACTION TAKEN! Current activity: " + current_activity + ". Forcing idle and re-decision.")
+		# This state should be rare. If it happens, something is logically stuck.
+		# Forcing idle and another deferred decision might help break a loop or undefined state.
+		if current_activity != "idle": # Avoid immediate recursive call if already idle and stuck
+			set_activity("idle")
+		call_deferred("_decide_next_activity") # Try again next frame
+		action_taken = true # Technically an action (to re-decide) was taken
+
+	if DETAILED_LOGGING_ENABLED: print_debug_student("--- DECIDE NEXT ACTIVITY END --- Action Taken This Cycle: " + str(action_taken) + " Final Activity: " + current_activity)
+
+# NEW - Added from previous response for completeness
+func get_courses_for_current_term_from_progression() -> Array[String]:
+	if is_instance_valid(degree_progression) and is_instance_valid(university_data_ref):
+		return degree_progression.get_next_courses_to_take(university_data_ref)
+	if DETAILED_LOGGING_ENABLED:
+		if not is_instance_valid(degree_progression):
+			print_debug_student("get_courses_for_current_term: DegreeProgression node invalid.")
+		if not is_instance_valid(university_data_ref):
+			print_debug_student("get_courses_for_current_term: UniversityData ref invalid.")
+	return []
 	
-	if DETAILED_LOGGING_ENABLED: print_debug_student("--- DECIDE NEXT ACTIVITY END --- Action Taken: " + str(action_taken))
+func get_info_summary() -> Dictionary:
+	var summary: Dictionary = {}
+	summary["name"] = student_name
+	summary["student_id"] = student_id # Good to have for debugging
+
+	var program_name_str = "N/A"
+	if is_instance_valid(university_data_ref) and not current_program_id.is_empty():
+		var prog_details = university_data_ref.get_program_details(current_program_id)
+		program_name_str = prog_details.get("name", "Unknown Program")
+	summary["program_name"] = program_name_str
+
+	var course_names: Array[String] = []
+	for offering_id in current_course_enrollments:
+		var enrollment_data = current_course_enrollments[offering_id]
+		# Ensure 'course_name' is being stored in enrollment_data when student enrolls
+		course_names.append(enrollment_data.get("course_name", "Unknown Course in Enrollment"))
+	summary["current_courses_list"] = course_names
+
+	var student_status = "Enrolled"
+	var credits_e = 0.0
+	var credits_n = 0.0
+
+	if is_instance_valid(degree_progression):
+		if degree_progression.is_graduated:
+			student_status = "Graduated!"
+		credits_e = degree_progression.total_credits_earned
+		if is_instance_valid(university_data_ref) and not current_program_id.is_empty():
+			var prog_details_for_credits = university_data_ref.get_program_details(current_program_id)
+			credits_n = prog_details_for_credits.get("credits_to_graduate", 0.0)
+	else:
+		student_status = "Progression N/A"
+
+
+	summary["status"] = student_status
+	summary["credits_earned"] = credits_e
+	summary["credits_needed_for_program"] = credits_n
+
+	if DETAILED_LOGGING_ENABLED:
+		print_debug_student("get_info_summary() returning: " + str(summary))
+	return summary

@@ -3,6 +3,8 @@
 class_name BuildingManager
 extends Node3D
 
+const DETAILED_LOGGING_ENABLED: bool = true # Or false if you want less logging from this script by default
+
 # --- Constants ---
 const GRID_CELL_SIZE: float = 2.0
 const EFFECTIVE_GROUND_NAVMESH_Y_FOR_REFERENCE: float = 2.4
@@ -76,7 +78,9 @@ var module_data = {
 @onready var navigation_region: NavigationRegion3D = get_node_or_null("NavigationRegion3D") as NavigationRegion3D
 @onready var ground_node: StaticBody3D = get_node_or_null("NavigationRegion3D/Ground") as StaticBody3D
 @onready var nav_mesh_block_parent: Node3D
-@onready var student_manager: Node = null # Found by path in _ready
+# --- CORRECTED StudentManager Reference ---
+# StudentManager is a direct child of BuildingManager (your scene root)
+@onready var student_manager: StudentManager = get_node_or_null("StudentManager") as StudentManager
 @onready var capacity_labels_parent: Node3D = null
 
 # --- Academic Manager Reference (NEW for Reputation) ---
@@ -178,12 +182,26 @@ func _ready():
 	elif not ground_node is StaticBody3D:
 		printerr("CRITICAL: Ground node is not a StaticBody3D!")
 
-	student_manager = get_node_or_null("StudentManager") # Adjust path if needed
-	if not student_manager:
-		print_debug("Warning: BuildingManager: StudentManager node not found!")
-	elif not student_manager.has_method("on_initial_navmesh_baked"):
-		print_debug("Warning: BuildingManager: Assigned StudentManager node incorrect type.")
-		student_manager = null
+	if not is_instance_valid(student_manager):
+		printerr("CRITICAL: BuildingManager: StudentManager node NOT FOUND via @onready. Check node name and hierarchy. Student UI will fail.")
+	else:
+		print_debug("BuildingManager: StudentManager reference IS VALID in _ready (via @onready).")
+		if student_manager.has_signal("student_population_changed"):
+			if not student_manager.is_connected("student_population_changed", Callable(self, "_on_student_population_changed")):
+				var err_pop_changed = student_manager.connect("student_population_changed", Callable(self, "_on_student_population_changed"))
+				if err_pop_changed == OK:
+					print_debug("BuildingManager: Successfully connected to StudentManager.student_population_changed.")
+				else:
+					printerr("BuildingManager: FAILED to connect to StudentManager.student_population_changed. Error: %s" % err_pop_changed)
+		else:
+			print_debug("BuildingManager: Warning - StudentManager does not have 'student_population_changed' signal.")
+
+		# Initial UI update for student count
+		if student_manager.has_method("get_total_student_count"):
+			_update_total_students_label(student_manager.get_total_student_count())
+		else:
+			print_debug("BuildingManager: Warning - StudentManager is missing get_total_student_count() method for initial UI update.")
+			_update_total_students_label(0) # Default if method not found
 
 	wfc_solver = WfcSolverClass.new()
 	if not wfc_solver.initialize(Vector3i.ONE, module_data):
@@ -290,6 +308,11 @@ func _ready():
 		else:
 			print_debug("Warning: StudentManager does not have 'student_population_changed' signal. Student count UI may not update reactively.")
 		
+		# Initial update for student count
+		if student_manager.has_method("get_total_student_count"):
+			# Ensure _update_total_students_label is called *after* total_students_label is potentially found
+			_update_total_students_label(student_manager.get_total_student_count())
+		
 		# Initial update for student count right after connecting (if possible)
 		if student_manager.has_method("get_total_student_count"):
 			_update_total_students_label(student_manager.get_total_student_count())
@@ -359,7 +382,12 @@ func _update_total_students_label(count: int):
 # --- NEW Signal Handler from StudentManager ---
 func _on_student_population_changed(new_count: int):
 	print_debug("Received student_population_changed signal. New count: %d. Updating UI." % new_count)
-	_update_total_students_label(new_count)
+	_update_total_students_label(new_count) # This updates the "Students: X" label
+
+	# If the student list panel is already visible, refresh its content
+	if is_instance_valid(student_list_panel) and student_list_panel.visible:
+		print_debug("Student population changed and roster panel is visible. Repopulating roster.")
+		populate_student_roster()
 	
 func perform_initial_bake():
 	rebake_navigation_mesh(true) # Synchronous bake
@@ -1077,28 +1105,94 @@ func _on_close_student_panel_button_pressed():
 	if is_instance_valid(student_list_panel): 
 		student_list_panel.visible = false
 
-func populate_student_roster():
-	if not is_instance_valid(student_list_vbox) or not is_instance_valid(student_manager) or not student_list_item_scene:
-		print_debug("Cannot populate student roster due to missing components (VBox, StudentManager, or ItemScene).")
-		return
-	for child in student_list_vbox.get_children(): child.queue_free() # Clear old items
-	
-	if student_manager.has_method("get_all_student_nodes"):
-		var students_array: Array[Node] = student_manager.get_all_student_nodes() # Ensure this returns Array[Node]
-		if students_array.is_empty():
-			var empty_label = Label.new(); empty_label.text = "No students enrolled yet."
-			student_list_vbox.add_child(empty_label)
-		else:
-			for student_node_item in students_array: # Use different variable name
-				if is_instance_valid(student_node_item): # student_node_item should be the Student node itself
-					var item_instance = student_list_item_scene.instantiate()
-					if not is_instance_valid(item_instance): continue # Skip if instantiation failed
-					student_list_vbox.add_child(item_instance)
-					if item_instance.has_method("set_student_data"): 
-						item_instance.set_student_data(student_node_item) # Pass the Student node
-					# else: print_debug("StudentListItem scene's script missing set_student_data().")
-	# else: print_debug("StudentManager missing get_all_student_nodes().")
+# BuildingManager.gd
 
+# Ensure DETAILED_LOGGING_ENABLED is defined in this script if you use it
+# const DETAILED_LOGGING_ENABLED: bool = true # Example
+
+# ... (other BuildingManager code, including @export vars for UI elements
+#      like student_list_vbox, student_manager, and student_list_item_scene) ...
+
+func populate_student_roster():
+	# --- Pre-condition Checks ---
+	if not is_instance_valid(student_list_vbox):
+		print_debug("populate_student_roster: student_list_vbox (VBoxContainer for list items) is NOT valid. Cannot populate.")
+		return
+	if not is_instance_valid(student_manager): # student_manager should be an @onready var
+		print_debug("populate_student_roster: student_manager node reference is NOT valid. Cannot fetch student data.")
+		# Clear old items and display an error in the UI
+		for child in student_list_vbox.get_children(): child.queue_free()
+		var error_label = Label.new()
+		error_label.text = "Error: Student data system unavailable."
+		student_list_vbox.add_child(error_label)
+		return
+	if not student_list_item_scene: # Should be a preloaded PackedScene
+		print_debug("populate_student_roster: student_list_item_scene is NOT preloaded. Cannot create list items.")
+		return
+	if not student_manager.has_method("get_all_student_info_for_ui"): # Check for the correct method
+		print_debug("populate_student_roster: StudentManager is MISSING the required 'get_all_student_info_for_ui()' method.")
+		for child in student_list_vbox.get_children(): child.queue_free()
+		var error_label = Label.new(); error_label.text = "Error: Cannot retrieve student list."
+		student_list_vbox.add_child(error_label)
+		return
+
+	if DETAILED_LOGGING_ENABLED: print_debug("Populating student roster UI...")
+
+	# --- Clear Existing Items ---
+	for child in student_list_vbox.get_children():
+		child.queue_free()
+
+	# --- Get Student Data Dictionaries ---
+	var all_students_info_list: Array[Dictionary] = student_manager.get_all_student_info_for_ui()
+	
+	if DETAILED_LOGGING_ENABLED: print_debug("populate_student_roster: Received %d student DATA RECORDS from StudentManager." % all_students_info_list.size())
+
+	# --- Populate Roster ---
+	if all_students_info_list.is_empty():
+		var empty_label = Label.new()
+		empty_label.text = "No students currently enrolled in the university."
+		student_list_vbox.add_child(empty_label)
+	else:
+		for student_info_dictionary in all_students_info_list:
+			if not student_info_dictionary is Dictionary or student_info_dictionary.is_empty():
+				if DETAILED_LOGGING_ENABLED: print_debug("populate_student_roster: Encountered an invalid or empty student_info_dictionary. Skipping.")
+				continue
+			
+			var student_display_name = student_info_dictionary.get("name", "Unknown Student") # Get name for logging
+			if DETAILED_LOGGING_ENABLED: print_debug("populate_student_roster: Creating list item for student: " + student_display_name)
+
+			var item_instance = student_list_item_scene.instantiate() # Instantiate the StudentListItem.tscn
+			
+			if not is_instance_valid(item_instance):
+				printerr("populate_student_roster: Failed to instantiate StudentListItem scene for " + student_display_name)
+				continue # Skip this item if instantiation failed
+			
+			student_list_vbox.add_child(item_instance) # Add the new item to the VBoxContainer
+			
+			if item_instance.has_method("set_student_data"):
+				# Pass the DICTIONARY directly to the list item's script
+				item_instance.set_student_data(student_info_dictionary)
+			else:
+				printerr("populate_student_roster: StudentListItem scene's script is missing the set_student_data(dictionary) method for " + student_display_name)
+
+	if DETAILED_LOGGING_ENABLED: print_debug("Student roster population complete.")
+
+# Make sure you have a print_debug function in BuildingManager.gd or use standard print()
+# Example print_debug:
+# func print_debug(message_parts):
+#	var output_message = "[BuildingManager]: "
+#	if typeof(message_parts) == TYPE_STRING:
+#		output_message += message_parts
+#	elif typeof(message_parts) == TYPE_ARRAY:
+#		var string_array : Array[String] = []
+#		for item in message_parts: string_array.append(str(item))
+#		output_message += " ".join(string_array)
+#	else:
+#		output_message += str(message_parts)
+#	if DETAILED_LOGGING_ENABLED: # Optional: check the constant here too
+#		print(output_message)
+
+# ... (rest of BuildingManager.gd) ...
 
 # --- Program Management UI Functions ---
 func _on_view_programs_button_pressed():

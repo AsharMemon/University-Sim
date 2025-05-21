@@ -9,6 +9,7 @@ subpixel_positioning = 0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 pixel_size = 0.01
 billboard = 2
+texture_filter = 4
 text = "0/0"
 font = SubResource("SystemFont_yhwf6")
 font_size = 64

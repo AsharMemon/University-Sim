@@ -8,10 +8,10 @@ signal class_scheduled(class_instance_id: String, details: Dictionary)
 signal class_unscheduled(class_instance_id: String, details: Dictionary)
 signal schedules_updated()
 signal enrollment_changed(offering_id: String, enrolled_count: int, max_capacity: int)
+signal student_graduated(student_id: String, program_id: String, graduation_term: String) # NEW
 
 # !!! IMPORTANT: Update this path to your actual student scene file !!!
 const STUDENT_SCENE: PackedScene = preload("res://actors/student.tscn") 
-
 const DETAILED_LOGGING_ENABLED: bool = true # Set true for AcademicManager's detailed logs
 
 # --- Student Constants (ensure these match Student.gd) ---
@@ -35,6 +35,11 @@ const HOURLY_TIME_SLOTS: Array[String] = [
 ]
 const DURATION_MWF: int = 1
 const DURATION_TR: int = 2
+
+# Store grades if needed, or assume pass/fail for now
+const GRADE_PASS = "COMP" # Completed / Pass
+const GRADE_FAIL = "F"
+const GRADE_IN_PROGRESS = "IP"
 
 var in_building_simulated_students: Array[Dictionary] = []
 
@@ -99,6 +104,20 @@ func _connect_time_manager_signals():
 					if DETAILED_LOGGING_ENABLED: print_debug(["AcademicManager: Connected to TimeManager's simulation_time_updated."])
 				else: printerr("AcademicManager: FAILED to connect simulation_time_updated. Error: %s" % err_code_stu)
 		else: printerr("AcademicManager: TimeManager missing 'simulation_time_updated' signal.")
+		
+		# Connect to new academic term signals
+		if not time_manager.is_connected("fall_semester_starts", Callable(self, "_on_fall_semester_starts")):
+			time_manager.fall_semester_starts.connect(Callable(self, "_on_fall_semester_starts"))
+		if not time_manager.is_connected("spring_semester_starts", Callable(self, "_on_spring_semester_starts")):
+			time_manager.spring_semester_starts.connect(Callable(self, "_on_spring_semester_starts"))
+		if not time_manager.is_connected("summer_semester_starts", Callable(self, "_on_summer_semester_starts")):
+			time_manager.summer_semester_starts.connect(Callable(self, "_on_summer_semester_starts"))
+		
+		# Connect to end of terms (can be inferred or use specific signals if added to TimeManager)
+		# For now, we'll process at the *start* of the *next* logical period (e.g. end of Fall processed when Winter Break starts)
+		if not time_manager.is_connected("academic_term_changed", Callable(self, "_on_academic_term_changed_for_progression")):
+			time_manager.academic_term_changed.connect(Callable(self, "_on_academic_term_changed_for_progression"))
+			
 	else:
 		printerr("AcademicManager: Cannot connect TimeManager signals, TimeManager is not valid.")
 
@@ -458,29 +477,71 @@ func get_offering_enrollment(offering_id: String) -> Dictionary:
 	return {"enrolled_count": 0, "max_capacity": 0, "student_ids": []}
 
 func calculate_new_student_intake_capacity() -> int:
-	if not is_instance_valid(university_data): printerr("Capacity Calc: UniversityData not valid."); return 0
-	var total_available_seats: int = 0
-	var unlocked_prog_ids_list = get_all_unlocked_program_ids()
-	var unique_freshman_first_sem_courses_dict: Dictionary = {}
-	for prog_id_val in unlocked_prog_ids_list:
-		var curriculum_data = university_data.get_program_curriculum_structure(prog_id_val)
-		if curriculum_data.has("Freshman Year"):
-			var freshman_year_dict: Dictionary = curriculum_data["Freshman Year"]
-			if freshman_year_dict.has("First Semester"):
-				var first_sem_course_id_list: Array = freshman_year_dict["First Semester"]
-				for course_id_item_val in first_sem_course_id_list:
-					if course_id_item_val is String: unique_freshman_first_sem_courses_dict[course_id_item_val] = true
-	if unique_freshman_first_sem_courses_dict.is_empty(): 
-		if DETAILED_LOGGING_ENABLED: print_debug(["Capacity Calc: No unique Freshman/1st Sem courses in curricula."])
+	if not is_instance_valid(university_data):
+		printerr("AcademicManager: Capacity Calc - UniversityData not valid.")
 		return 0
-	for course_id_for_calc in unique_freshman_first_sem_courses_dict.keys():
+
+	var total_available_seats: int = 0
+	var unlocked_prog_ids_list: Array[String] = get_all_unlocked_program_ids()
+
+	if unlocked_prog_ids_list.is_empty():
+		if DETAILED_LOGGING_ENABLED: print_debug(["Capacity Calc: No unlocked programs. Intake capacity is 0."])
+		return 0
+
+	if DETAILED_LOGGING_ENABLED: print_debug(["Capacity Calc: Unlocked programs for capacity check: ", str(unlocked_prog_ids_list)])
+
+	# This dictionary will store the course IDs that are considered "first semester, first year" courses
+	# across all unlocked programs. We count seats in offerings for these specific courses.
+	var unique_initial_semester_courses_dict: Dictionary = {}
+
+	for prog_id_val in unlocked_prog_ids_list:
+		# Get the structured curriculum for the program
+		var program_curriculum_structure = university_data.get_program_curriculum_structure(prog_id_val)
+
+		# Check for "Year 1" and then "Semester 1" as per your UniversityData structure
+		if program_curriculum_structure.has("Year 1"):
+			var year1_data: Dictionary = program_curriculum_structure["Year 1"]
+			if year1_data.has("Semester 1"):
+				var first_sem_course_id_list: Array = year1_data["Semester 1"]
+				if DETAILED_LOGGING_ENABLED: print_debug(["Capacity Calc: For program '", prog_id_val, "', Year 1/Semester 1 courses: ", str(first_sem_course_id_list)])
+				for course_id_item_val in first_sem_course_id_list:
+					if course_id_item_val is String:
+						unique_initial_semester_courses_dict[course_id_item_val] = true # Mark this course as an initial one
+			elif DETAILED_LOGGING_ENABLED:
+				print_debug(["Capacity Calc: Program '", prog_id_val, "' has 'Year 1' but no 'Semester 1' defined in curriculum structure."])
+		elif DETAILED_LOGGING_ENABLED:
+			print_debug(["Capacity Calc: Program '", prog_id_val, "' has no 'Year 1' defined in curriculum structure."])
+
+	if unique_initial_semester_courses_dict.is_empty():
+		if DETAILED_LOGGING_ENABLED: print_debug(["Capacity Calc: No unique initial semester (Year 1/Semester 1) courses found across all unlocked programs' curricula."])
+		return 0
+	else:
+		if DETAILED_LOGGING_ENABLED: print_debug(["Capacity Calc: Unique initial semester courses to check for offerings: ", str(unique_initial_semester_courses_dict.keys())])
+
+	# Now, iterate through all *scheduled class offerings* and sum up available seats
+	# ONLY for those courses that were identified as "initial semester courses".
+	for course_id_for_calc in unique_initial_semester_courses_dict.keys():
+		var found_offering_for_this_course_type = false
 		for offering_id_sch_key in scheduled_class_details.keys():
-			var sch_details_dict = scheduled_class_details[offering_id_sch_key]
+			var sch_details_dict: Dictionary = scheduled_class_details[offering_id_sch_key]
+			
 			if sch_details_dict.get("course_id") == course_id_for_calc:
+				found_offering_for_this_course_type = true
 				var enrolled_students_array: Array = sch_details_dict.get("enrolled_student_ids", [])
-				var available_in_this_one = sch_details_dict.get("max_capacity", 0) - enrolled_students_array.size()
-				if available_in_this_one > 0: total_available_seats += available_in_this_one
-	if DETAILED_LOGGING_ENABLED: print_debug(["Total intake capacity: %d seats." % total_available_seats])
+				var max_cap: int = sch_details_dict.get("max_capacity", 0)
+				var available_in_this_one = max_cap - enrolled_students_array.size()
+				
+				if available_in_this_one > 0:
+					total_available_seats += available_in_this_one
+					if DETAILED_LOGGING_ENABLED: print_debug(["Capacity Calc: Offering '", offering_id_sch_key, "' (Course: '", course_id_for_calc, "') has ", available_in_this_one, " available seats. Total so far: ", total_available_seats])
+				elif DETAILED_LOGGING_ENABLED:
+					print_debug(["Capacity Calc: Offering '", offering_id_sch_key, "' (Course: '", course_id_for_calc, "') is full or has no capacity (", enrolled_students_array.size() , "/", max_cap, ")."])
+		
+		if not found_offering_for_this_course_type and DETAILED_LOGGING_ENABLED:
+			print_debug(["Capacity Calc: No scheduled offerings found for initial course type '", course_id_for_calc, "'. This will limit intake."])
+
+
+	if DETAILED_LOGGING_ENABLED: print_debug(["Capacity Calc: Final calculated total intake capacity based on initial course offerings: %d seats." % total_available_seats])
 	return total_available_seats
 
 func get_freshman_first_semester_courses(program_id: String) -> Array[String]:
@@ -615,13 +676,24 @@ func print_debug(message_parts):
 # --- LOGIC FOR MANAGING DESPAWNED (IN-BUILDING) STUDENTS (With Staggered Respawn) ---
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-func _on_student_despawned(data: Dictionary):
-	if DETAILED_LOGGING_ENABLED: 
-		print_debug(["_on_student_despawned CALLED. Student ID:", data.get("student_id", "N/A_ID"), 
+# AcademicManager.gd
+func _on_student_despawned(data: Dictionary): # data from Student's student_despawn_data_for_manager signal
+	var student_id = data.get("student_id")
+	if DETAILED_LOGGING_ENABLED:
+		print_debug(["_on_student_despawned CALLED (AcademicManager). Student ID:", student_id,
 					 "Activity:", data.get("activity_after_despawn", "N/A_Activity")])
-					 # Removed full data print for brevity, can be re-added if needed: ", Data received:", data
-	data["time_spent_in_activity_simulated"] = 0.0 
-	in_building_simulated_students.append(data)
+
+	# StudentManager will also connect to the student's "student_despawn_data_for_manager" signal
+	# to update its persistent all_students_data record and clear its active node cache.
+	# AcademicManager's primary role here is to add the student's data to its own simulation list.
+	# The Student node itself should be responsible for queue_free via call_deferred after emitting the signal.
+
+	var sim_data_entry = data.duplicate(true) 
+	sim_data_entry["time_spent_in_activity_simulated"] = 0.0
+	in_building_simulated_students.append(sim_data_entry)
+
+	if DETAILED_LOGGING_ENABLED:
+		print_debug(["AcademicManager: Student %s data processed for simulation list. Node is expected to self-free." % student_id])
 
 func _on_visual_hour_slot_changed_simulation_update(day_str: String, time_slot_str: String):
 	if DETAILED_LOGGING_ENABLED: 
@@ -870,19 +942,13 @@ func _should_student_exit_building_simulation(student_data: Dictionary, current_
 				return true
 	return false
 
+func _reinstantiate_student_from_simulation(student_data_from_simulation_list: Dictionary): # Renamed parameter for clarity
+	var student_id_for_log = student_data_from_simulation_list.get("student_id", "N/A_ID")
+	if DETAILED_LOGGING_ENABLED: print_debug(["ATTEMPTING RE-ACTIVATION for student:", student_id_for_log])
 
-# AcademicManager.gd
-
-func _reinstantiate_student_from_simulation(student_data: Dictionary):
-	var student_id_for_log = student_data.get("student_id", "N/A_ID")
-	if DETAILED_LOGGING_ENABLED: print_debug(["  ATTEMPTING REINSTANTIATION for student:", student_id_for_log])
-
-	if not STUDENT_SCENE or not STUDENT_SCENE.can_instantiate():
-		printerr("AcademicManager: STUDENT_SCENE is null or cannot be instantiated! Path correct? Cannot reinstantiate student.")
-		return
 	if not is_instance_valid(building_manager):
 		printerr("AcademicManager: BuildingManager invalid, cannot get exit position for student:", student_id_for_log)
-		return 
+		return
 	if not is_instance_valid(time_manager):
 		printerr("AcademicManager: TimeManager invalid, cannot properly re-initialize student:", student_id_for_log)
 		return
@@ -890,76 +956,324 @@ func _reinstantiate_student_from_simulation(student_data: Dictionary):
 		printerr("AcademicManager: UniversityData invalid, cannot properly re-initialize student:", student_id_for_log)
 		return
 
-	var student_node = STUDENT_SCENE.instantiate()
-	if not is_instance_valid(student_node):
-		printerr("AcademicManager: Failed to INSTANTIATE student scene for ID:", student_id_for_log)
+	var student_manager_ref = get_node_or_null("/root/MainScene/StudentManager") # Adjust path
+	if not is_instance_valid(student_manager_ref):
+		printerr("AcademicManager: StudentManager not found for re-activating student " + student_id_for_log)
 		return
+
+	var existing_student_node: Student = student_manager_ref.get_student_node_by_id(student_id_for_log)
+
+	if not is_instance_valid(existing_student_node):
+		printerr("AcademicManager: Failed to find existing student node for ID '%s'. Instantiating new." % student_id_for_log)
+		# Fallback: Instantiate a new student if the old node isn't found (this mixes strategies but can be a failsafe)
+		if not STUDENT_SCENE or not STUDENT_SCENE.can_instantiate():
+			printerr("AcademicManager: STUDENT_SCENE is null or cannot be instantiated! Cannot create student.")
+			return
+		existing_student_node = STUDENT_SCENE.instantiate() as Student
+		if not is_instance_valid(existing_student_node):
+			printerr("AcademicManager: Fallback instantiation failed for " + student_id_for_log)
+			return
+		var student_parent = get_node_or_null("/root/MainScene/Students") # Or appropriate parent
+		if is_instance_valid(student_parent):
+			student_parent.add_child(existing_student_node)
+			if DETAILED_LOGGING_ENABLED: print_debug(["Fallback: Instantiated and parented new student node for %s" % student_id_for_log])
+		else:
+			printerr("AcademicManager: Fallback - Cannot find parent for new student node.")
+			existing_student_node.queue_free()
+			return
 	
-	if DETAILED_LOGGING_ENABLED: print_debug(["    Student scene instantiated for:", student_id_for_log])
-	var new_student: Student = student_node as Student
+	var new_student: Student = existing_student_node
 
-	var building_id: String = student_data.get("building_id", "")
-	var exit_position: Vector3 = Vector3(0, ACADEMIC_MGR_STUDENT_EXPECTED_NAVMESH_Y, 0) 
+	var building_id_exited: String = student_data_from_simulation_list.get("building_id", "")
+	var exit_position: Vector3 = Vector3(0, ACADEMIC_MGR_STUDENT_EXPECTED_NAVMESH_Y, 0)
 
-	if not building_id.is_empty() and building_manager.has_method("get_building_exit_location"):
-		var calculated_exit = building_manager.get_building_exit_location(building_id)
-		if calculated_exit != Vector3.ZERO: 
+	if not building_id_exited.is_empty() and building_manager.has_method("get_building_exit_location"):
+		var calculated_exit = building_manager.get_building_exit_location(building_id_exited)
+		if calculated_exit != Vector3.ZERO:
 			exit_position = calculated_exit
-		elif DETAILED_LOGGING_ENABLED: 
-			print_debug(["    BuildingManager returned ZERO for exit position. Using fallback for student:", student_id_for_log])
-		if DETAILED_LOGGING_ENABLED: print_debug(["    Exit position for building '", building_id, "' is: ", exit_position, "for student:", student_id_for_log])
-	else:
-		if DETAILED_LOGGING_ENABLED: printerr("AcademicManager: Could not get exit location for building '", building_id, "' (or BM missing method) for student '", student_id_for_log, "'. Using default.")
-
-	var student_parent = get_tree().current_scene 
-	if not is_instance_valid(student_parent):
-		printerr("AcademicManager: Cannot get current_scene to parent re-instantiated student:", student_id_for_log)
-		new_student.queue_free() 
-		return
-		
-	student_parent.add_child(new_student)
-	new_student.global_position = exit_position 
-	if DETAILED_LOGGING_ENABLED: print_debug(["    Student node '",new_student.name,"' added to scene '", student_parent.name ,"' at global pos:", new_student.global_position])
 	
-	# --- Prepare details for "just exited class" logic ---
+	new_student.global_position = exit_position
+	
 	var offering_id_just_finished: String = ""
-	var activity_target_data_for_despawn = student_data.get("activity_target_data", {})
-	if student_data.get("activity_after_despawn") == "in_class" and activity_target_data_for_despawn is Dictionary:
-		offering_id_just_finished = activity_target_data_for_despawn.get("offering_id", "")
+	var activity_target_data = student_data_from_simulation_list.get("activity_target_data", {})
+	if student_data_from_simulation_list.get("activity_after_despawn") == "in_class" and activity_target_data is Dictionary:
+		offering_id_just_finished = activity_target_data.get("offering_id", "")
 	
-	# Get the visual time slot string AT THE MOMENT OF RE-INSTANTIATION
 	var current_visual_slot_when_exited: String = ""
-	if is_instance_valid(time_manager): # Ensure time_manager is valid before calling
+	if is_instance_valid(time_manager):
 		current_visual_slot_when_exited = time_manager.get_current_visual_time_slot_string()
-	else:
-		printerr("AcademicManager: TimeManager became invalid before getting current_visual_slot_when_exited for student:", student_id_for_log)
-
+	
+	var restored_degree_prog_summary = student_data_from_simulation_list.get("degree_progression_summary", {})
 
 	new_student.initialize_new_student(
-		student_data.get("student_id"),
-		student_data.get("student_name"),
-		student_data.get("current_program_id"),
-		student_data.get("academic_start_year"),
-		self, 
-		university_data, 
-		time_manager,
-		offering_id_just_finished,       # New argument
-		current_visual_slot_when_exited  # New argument
+		student_data_from_simulation_list.get("student_id"),
+		student_data_from_simulation_list.get("student_name"),
+		student_data_from_simulation_list.get("current_program_id"),
+		student_data_from_simulation_list.get("academic_start_year"),
+		self, university_data, time_manager,
+		offering_id_just_finished, current_visual_slot_when_exited,
+		restored_degree_prog_summary
 	)
 	
-	new_student.needs = student_data.get("needs").duplicate(true)
-	
-	var enrollments: Dictionary = student_data.get("current_course_enrollments", {})
-	if DETAILED_LOGGING_ENABLED: print_debug(["AM Re-instantiating ", student_id_for_log, " - Enrollments to re-confirm: ", enrollments])
-	for offering_id_key in enrollments:
-		if enrollments[offering_id_key] is Dictionary:
-			new_student.confirm_course_enrollment(offering_id_key, enrollments[offering_id_key])
-		else:
-			printerr("AM: Malformed enrollment data for offering '", offering_id_key, "' during re-instantiation of student '", student_id_for_log, "'")
+	if is_instance_valid(student_manager_ref) and new_student.has_signal("student_despawn_data_for_manager"):
+		if not new_student.is_connected("student_despawn_data_for_manager", Callable(student_manager_ref, "_on_student_node_data_update_requested")):
+			new_student.student_despawn_data_for_manager.connect(Callable(student_manager_ref, "_on_student_node_data_update_requested"))
+	if is_instance_valid(student_manager_ref):
+		student_manager_ref.active_student_nodes_cache[new_student.student_id] = new_student
 
-	if not building_id.is_empty() and is_instance_valid(building_manager):
-		building_manager.student_left_functional_building(building_id)
+	new_student.needs = student_data_from_simulation_list.get("needs", {}).duplicate(true)
 	
-	if DETAILED_LOGGING_ENABLED: print_debug(["  REINSTANTIATION COMPLETE for student:", new_student.student_name, ". Activity set to idle."])
-	new_student.set_activity("idle") 
+	# THIS IS WHERE THE CHANGE IS:
+	# Use a different name for the variable holding enrollments from student_data_from_simulation_list
+	# if `enrollments` is used elsewhere in a way that causes a conflict,
+	# OR ensure it's not re-declared if it was a parameter or already declared.
+	# For this example, let's assume `student_data_from_simulation_list` is the source.
+	var enrollments_from_data: Dictionary = student_data_from_simulation_list.get("current_course_enrollments", {})
+	
+	if DETAILED_LOGGING_ENABLED: print_debug(["Re-activating student %s - Enrollments to re-confirm: %s" % [student_id_for_log, str(enrollments_from_data)]])
+	
+	if is_instance_valid(new_student): # Ensure new_student is valid before accessing current_course_enrollments
+		new_student.current_course_enrollments.clear() # Clear old ones on the node
+		for offering_id_key in enrollments_from_data:
+			if enrollments_from_data[offering_id_key] is Dictionary:
+				new_student.confirm_course_enrollment(offering_id_key, enrollments_from_data[offering_id_key])
+			else:
+				printerr("Malformed enrollment data for offering '%s' during re-activation of student '%s'" % [offering_id_key, student_id_for_log])
+
+	if is_instance_valid(new_student.student_visuals):
+		new_student.student_visuals.visible = true
+	new_student.process_mode = Node.PROCESS_MODE_INHERIT
+
+	if not building_id_exited.is_empty() and is_instance_valid(building_manager):
+		if building_manager.has_method("student_left_functional_building"):
+			building_manager.student_left_functional_building(building_id_exited)
+	
+	if DETAILED_LOGGING_ENABLED: print_debug(["RE-ACTIVATION COMPLETE for student: %s. Activity set to idle." % new_student.student_name])
+	new_student.set_activity("idle")
 	new_student.call_deferred("on_fully_spawned_and_enrolled")
+	
+func ensure_student_removed_from_simulation_list(s_id: String):
+	for i in range(in_building_simulated_students.size() - 1, -1, -1):
+		if in_building_simulated_students[i].get("student_id") == s_id:
+			in_building_simulated_students.remove_at(i)
+			if DETAILED_LOGGING_ENABLED: print_debug(["Ensured removal of %s from in_building_sim_list." % s_id])
+			break
+			
+# --- NEW Semester Handling Functions ---
+func _on_fall_semester_starts(year: int):
+	if DETAILED_LOGGING_ENABLED: print_debug(["Fall semester started for year %d. Student enrollment/course selection should occur." % year])
+	# Enrollment is handled by StudentManager reacting to this or a similar signal.
+	# Active students might need to re-evaluate course choices if they can change them.
+	_process_student_course_registration_for_new_semester(year, "Fall")
+
+func _on_spring_semester_starts(year: int):
+	if DETAILED_LOGGING_ENABLED: print_debug(["Spring semester started for year %d." % year])
+	_process_student_course_registration_for_new_semester(year, "Spring")
+
+func _on_summer_semester_starts(year: int):
+	if DETAILED_LOGGING_ENABLED: print_debug(["Summer semester started for year %d." % year])
+	_process_student_course_registration_for_new_semester(year, "Summer")
+
+func _process_student_course_registration_for_new_semester(year: int, semester_name: String):
+	# This function would iterate through all students (active and potentially simulated)
+	# and guide them to register for courses for the new semester based on their degree progression.
+	# For active students (nodes in scene tree):
+	var student_manager = get_node_or_null("/root/MainScene/StudentManager") # Adjust path
+	if not is_instance_valid(student_manager): return
+	
+	for student_node in student_manager.get_all_student_nodes():
+		var student: Student = student_node as Student
+		if is_instance_valid(student) and is_instance_valid(student.degree_progression):
+			if student.degree_progression.is_graduated: continue
+
+			var courses_to_take_ids: Array[String] = student.get_courses_for_current_term_from_progression()
+			if DETAILED_LOGGING_ENABLED: print_debug(["Student %s needs to enroll in for %s %d: %s" % [student.student_id, semester_name, year, str(courses_to_take_ids)]])
+
+			for course_id_to_enroll in courses_to_take_ids:
+				# Check if already enrolled (e.g. from StudentManager initial spawn)
+				var already_enrolled_in_offering_for_course = false
+				for existing_offering_id in student.current_course_enrollments:
+					var enrollment_details = student.current_course_enrollments[existing_offering_id]
+					if enrollment_details.get("course_id") == course_id_to_enroll:
+						# Might also check if this offering is for the current term if that's tracked
+						already_enrolled_in_offering_for_course = true
+						break
+				if already_enrolled_in_offering_for_course:
+					if DETAILED_LOGGING_ENABLED: print_debug([" Student %s already has an enrollment for course %s." % [student.student_id, course_id_to_enroll]])
+					continue
+
+
+				var enrolled_offering_id = find_and_enroll_student_in_offering(student.student_id, course_id_to_enroll)
+				if not enrolled_offering_id.is_empty():
+					var offering_details = get_offering_details(enrolled_offering_id)
+					if student.has_method("confirm_course_enrollment"):
+						student.confirm_course_enrollment(enrolled_offering_id, offering_details)
+					if DETAILED_LOGGING_ENABLED: print_debug([" Student %s enrolled in %s (Offering: %s) for %s %d" % [student.student_id, course_id_to_enroll, enrolled_offering_id, semester_name, year]])
+				else:
+					printerr("AcademicManager: Student %s FAILED to find/enroll in %s for %s %d." % [student.student_id, course_id_to_enroll, semester_name, year])
+			
+			# After attempting enrollment, student might re-evaluate activity
+			if student.has_method("call_deferred") and student.has_method("_decide_next_activity"):
+				student.call_deferred("_decide_next_activity")
+
+
+func _on_academic_term_changed_for_progression(new_term_string: String, year: int):
+	if DETAILED_LOGGING_ENABLED: print_debug(["Academic term changed to: %s (%d). Checking for end-of-semester processing." % [new_term_string, year]])
+	
+	# Determine if the *previous* term was one that requires grade processing.
+	# This logic is a bit complex because the signal is for the *start* of the new term.
+	var term_just_ended: TimeManager.AcademicTerm = TimeManager.AcademicTerm.NONE
+	
+	# Example: If Winter Break starts, Fall semester just ended.
+	# If Spring Semester starts, Winter Break just ended (no grades for break).
+	# If Summer Break (main) starts, Summer Session just ended.
+	# If Fall Semester starts (new academic year), Summer Break Main just ended.
+	
+	var current_term_enum_from_tm = time_manager.get_current_academic_term_enum()
+	
+	if current_term_enum_from_tm == TimeManager.AcademicTerm.WINTER_BREAK:
+		term_just_ended = TimeManager.AcademicTerm.FALL
+	elif new_term_string == "Spring Break": # Mid-spring break
+		# No grades processed for a mid-semester break.
+		return
+	elif current_term_enum_from_tm == TimeManager.AcademicTerm.SUMMER_BREAK_MAIN and new_term_string.begins_with("Summer Break"): # After summer session
+		term_just_ended = TimeManager.AcademicTerm.SUMMER
+	elif current_term_enum_from_tm == TimeManager.AcademicTerm.SPRING: # This means winter break ended
+		pass # No grades for winter break itself
+	elif current_term_enum_from_tm == TimeManager.AcademicTerm.FALL: # New academic year Fall, means main summer break ended
+		# If Spring Semester ENDED before a long summer break (without a distinct summer session in between)
+		# This requires careful state definition in TimeManager.
+		# For now, let's assume a previous check or a different signal would handle Spring semester end if it leads directly to a long break.
+		# A simpler way: process grades when a *teaching* semester ends.
+		# The TimeManager _determine_current_term needs to be robust to identify previous term.
+		# Let's adjust: We need to know the *actual previous term name* that just concluded.
+		# This might require TimeManager to store previous_term or emit (previous_term, new_term)
+		pass
+
+
+	# Simplified: If Fall, Spring, or Summer semester just concluded, process grades.
+	# This needs a more direct way to know which semester *ended*.
+	# Let's assume we process at the *end date* of each semester, triggered by _advance_macro_day in TimeManager
+	# or a specific "semester_ended" signal.
+	
+	# For now, as a placeholder, let's re-evaluate what term truly ended.
+	# This is a tricky part of the logic.
+	# A better approach: When TimeManager's _update_academic_term detects a change *from*
+	# FALL, SPRING, or SUMMER to a *BREAK* or *NONE* state, it should emit a specific "semester_ended(term, year)" signal.
+	
+	# --- REVISED LOGIC: Assume we will add semester_ended signals to TimeManager ---
+	# For now, let's simulate this check based on the *new* term.
+	var semester_to_process_grades_for: String = ""
+	var year_of_ended_semester = year
+	
+	if new_term_string == "Winter Break": # Fall ended
+		semester_to_process_grades_for = "Fall"
+		# If Winter break starts in Dec, year is current. If it starts Jan 1st, Fall was last year.
+		if time_manager.get_current_month() == 1: year_of_ended_semester = year -1
+	elif new_term_string.begins_with("Summer Break"): # Could be after Spring or Summer semester
+		# Need more info from TimeManager to know if Spring or Summer just ended
+		# Placeholder:
+		if time_manager.current_month == 5 and time_manager.current_day < 15: # If May starts, assume Spring ended in April
+			semester_to_process_grades_for = "Spring"
+		elif time_manager.current_month == 8 and time_manager.current_day < 15 : # If Aug starts, Summer sem ended
+			semester_to_process_grades_for = "Summer"
+	
+	if not semester_to_process_grades_for.is_empty():
+		if DETAILED_LOGGING_ENABLED: print_debug(["Processing end of %s Semester, %d." % [semester_to_process_grades_for, year_of_ended_semester]])
+		_process_end_of_semester_for_all_students(semester_to_process_grades_for, year_of_ended_semester)
+
+
+func _process_end_of_semester_for_all_students(ended_semester_name: String, academic_year_calendar: int):
+	if DETAILED_LOGGING_ENABLED: print_debug(["--- Processing End of %s Semester, Year %d ---" % [ended_semester_name, academic_year_calendar]])
+	
+	var student_manager = get_parent().get_node_or_null("/StudentManager") # Adjust path
+	if not is_instance_valid(student_manager):
+		printerr("AcademicManager: StudentManager not found for end-of-semester processing.")
+		return
+
+	var all_student_nodes = student_manager.get_all_student_nodes()
+	# Also need to handle students who are currently "in_building_simulated_students"
+	var all_student_data_to_process: Array[Dictionary] = []
+
+	for student_node in all_student_nodes:
+		var student: Student = student_node as Student
+		if is_instance_valid(student) and is_instance_valid(student.degree_progression):
+			all_student_data_to_process.append({
+				"student_id": student.student_id,
+				"degree_progression_node": student.degree_progression, # Direct reference
+				"enrollments": student.current_course_enrollments.duplicate(true) # Copy
+			})
+			
+	# Add simulated students (very important for grades)
+	for sim_student_data in in_building_simulated_students:
+		var s_id = sim_student_data.get("student_id")
+		# We need to get their DegreeProgression. This is complex if it's not part of sim_student_data.
+		# BEST PRACTICE: StudentManager should hold DegreeProgression instances, or Student nodes always exist (even if hidden).
+		# For this example, let's assume StudentManager can provide the DegreeProgression node by ID.
+		var student_instance_from_sm = student_manager.get_student_by_id(s_id)
+		if is_instance_valid(student_instance_from_sm) and is_instance_valid(student_instance_from_sm.degree_progression):
+			all_student_data_to_process.append({
+				"student_id": s_id,
+				"degree_progression_node": student_instance_from_sm.degree_progression,
+				"enrollments": sim_student_data.get("current_course_enrollments", {}).duplicate(true)
+			})
+		else:
+			printerr("AcademicManager: Could not find degree progression for simulated student %s during end-of-semester." % s_id)
+
+
+	for student_entry in all_student_data_to_process:
+		var s_id = student_entry.student_id
+		var prog_node: DegreeProgression = student_entry.degree_progression_node
+		var enrollments: Dictionary = student_entry.enrollments
+		
+		if prog_node.is_graduated: continue
+
+		if DETAILED_LOGGING_ENABLED: print_debug([" Processing student: %s for end of %s %d" % [s_id, ended_semester_name, academic_year_calendar]])
+
+		var semester_string_for_record = "%s %d" % [ended_semester_name, academic_year_calendar]
+
+		for offering_id in enrollments:
+			var enrollment_details = enrollments[offering_id]
+			var course_id = enrollment_details.get("course_id")
+			# Check if this offering was for the semester that just ended.
+			# This requires offerings/schedules to have term information.
+			# For now, assume all "in_progress" courses were for the ended term.
+			
+			var sch_info = enrollment_details.get("schedule_info", {})
+			# TODO: Enhance schedule_info with term, or filter offerings by term.
+			# For now, let's assume we process all current enrollments.
+
+			if course_id and not prog_node.has_completed_course(course_id): # If not already graded
+				# Simplified grading: Assume all pass for now. Could be random or based on simulation.
+				var grade = GRADE_PASS
+				var course_data_from_univ = university_data.get_course_details(course_id)
+				var credits = course_data_from_univ.get("credits", 0.0)
+				
+				prog_node.record_course_completion(course_id, grade, credits, semester_string_for_record, course_data_from_univ)
+				if DETAILED_LOGGING_ENABLED: print_debug(["  Student %s: %s for %s (%s credits)" % [s_id, grade, course_id, credits]])
+
+		# After processing all courses for the semester:
+		if prog_node.check_for_graduation(university_data):
+			emit_signal("student_graduated", s_id, prog_node.program_id, semester_string_for_record)
+			# Handle graduated student (e.g., remove from active simulation, despawn permanently)
+			# This might involve StudentManager.
+			var student_node_to_remove = student_manager.get_student_by_id(s_id)
+			if is_instance_valid(student_node_to_remove):
+				# student_node_to_remove.set_activity("graduated") # A new state
+				if DETAILED_LOGGING_ENABLED: print_debug([" Student %s has graduated! Despawning." % s_id])
+				# Before queue_free, ensure any UI or records are updated.
+				# student_manager.remove_student(s_id) # A new method in StudentManager
+				student_node_to_remove.queue_free() 
+			# Also remove from in_building_simulated_students if they were there
+			for i in range(in_building_simulated_students.size() -1, -1, -1):
+				if in_building_simulated_students[i].get("student_id") == s_id:
+					in_building_simulated_students.remove_at(i)
+					break
+		else:
+			# Advance to next semester in their program studies
+			prog_node.advance_semester(university_data)
+			
+func get_courses_for_student_current_term(student: Student) -> Array[String]:
+	if is_instance_valid(student) and is_instance_valid(student.degree_progression):
+		return student.degree_progression.get_next_courses_to_take(university_data)
+	return []

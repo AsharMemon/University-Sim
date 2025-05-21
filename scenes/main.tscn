@@ -205,14 +205,12 @@ shape = SubResource("BoxShape3D_lquwl")
 
 [node name="PlacedBlocksOrganizational" type="Node" parent="NavigationRegion3D"]
 
-[node name="StudentManager" type="Node" parent="." node_paths=PackedStringArray("university_data_node", "academic_manager_node", "building_manager_node", "time_manager_node", "navigation_region_node")]
+[node name="StudentManager" type="Node" parent="." node_paths=PackedStringArray("university_data_node", "academic_manager_node", "time_manager_node")]
 script = ExtResource("4_85g3d")
 student_scene = ExtResource("5_choun")
 university_data_node = NodePath("../UniversityDataNode")
 academic_manager_node = NodePath("../AcademicManager")
-building_manager_node = NodePath("..")
 time_manager_node = NodePath("../TimeManager")
-navigation_region_node = NodePath("../NavigationRegion3D")
 
 [node name="UniversityDataNode" type="Node" parent="."]
 script = ExtResource("6_ya4ey")
