@@ -86,6 +86,9 @@ var module_data = {
 # --- Academic Manager Reference (NEW for Reputation) ---
 @export var academic_manager_node: AcademicManager # Assign in Godot Editor
 
+# --- Professor Manager Reference ---
+@onready var professor_manager: ProfessorManager = get_node_or_null("/root/MainScene/ProfessorManager") as ProfessorManager # Adjust path if different
+
 # UI Elements (General) - Paths based on user's last provided script
 @export var date_label: Label
 @export var speed_label: Label
@@ -111,6 +114,9 @@ var module_data = {
 # --- UI References for Scheduling Panel --- (NEW SECTION)
 @export var view_schedule_button: Button # Path set in _ready
 @export var scheduling_panel: PanelContainer # Adjust path if needed
+
+# --- UI References for Faculty Panel
+@export var faculty_panel: PanelContainer
 
 var student_list_item_scene: PackedScene = preload("res://scenes/StudentListItem.tscn")
 var capacity_label_scene: PackedScene = preload("res://scenes/CapacityLabel3D.tscn")
@@ -438,33 +444,74 @@ func _on_time_manager_speed_changed(new_speed: float):
 		else: speed_label.text = "Speed: %.1fx" % new_speed
 	if time_manager: _on_time_manager_pause_state_changed(time_manager.get_is_paused()) # Update related button states
 
-func _on_time_manager_new_year_started(year: int): # This is for Jan 1st usually
-	print_debug("New Financial Year Started: " + str(year) + ". Processing annual finances.")
+func _on_time_manager_new_year_started(year: int): # Parameter 'year' is provided by TimeManager's signal
+	if DETAILED_LOGGING_ENABLED: print_debug("New Financial Year Started: " + str(year) + ". Processing annual finances and updates.")
+
+	# --- 1. Calculate Income & Expenses from Building Blocks ---
 	var income_from_blocks: float = 0.0
 	var expenses_from_blocks: float = 0.0
+	
+	# Assuming occupied_cells stores data about each placed block, including its module_key
 	for coord_key in occupied_cells:
 		var block_data = occupied_cells[coord_key]
 		var module_key_val = block_data.get("module_key")
-		if module_key_val and module_data.has(module_key_val):
+		if module_key_val and module_data.has(module_key_val): # module_data is your definition dictionary
 			var m_info = module_data[module_key_val]
 			income_from_blocks += m_info.get("base_annual_income", 0.0)
 			expenses_from_blocks += m_info.get("base_annual_expense", 0.0)
 	
-	var base_income = 500.0 # Your original base income
-	var base_expenses = 200.0 # Your original base expenses
-	total_annual_income = base_income + income_from_blocks
-	total_annual_expenses = base_expenses + expenses_from_blocks
+	if DETAILED_LOGGING_ENABLED:
+		print_debug("Annual income from blocks: $%.2f" % income_from_blocks)
+		print_debug("Annual expenses from blocks: $%.2f" % expenses_from_blocks)
+
+	# --- 2. Get Faculty Salaries ---
+	var faculty_salaries: float = 0.0
+	if is_instance_valid(professor_manager):
+		if professor_manager.has_method("get_total_faculty_salary_expense"):
+			faculty_salaries = professor_manager.get_total_faculty_salary_expense()
+			if DETAILED_LOGGING_ENABLED: print_debug("Total annual faculty salaries: $%.2f" % faculty_salaries)
+		else:
+			printerr("BuildingManager: ProfessorManager is missing 'get_total_faculty_salary_expense' method.")
+	else:
+		printerr("BuildingManager: ProfessorManager reference not valid for calculating salaries.")
+
+	# --- 3. Calculate Total Income and Expenses ---
+	var base_income = 500.0 # Your game's base annual income (e.g., tuition, basic funding)
+	var base_expenses = 200.0 # Your game's base annual operating expenses
+	
+	total_annual_income = base_income + income_from_blocks # Later, you can add research grants, donations, etc.
+	total_annual_expenses = base_expenses + expenses_from_blocks + faculty_salaries
+	
+	if DETAILED_LOGGING_ENABLED:
+		print_debug("Total annual income (with base): $%.2f" % total_annual_income)
+		print_debug("Total annual expenses (with base & salaries): $%.2f" % total_annual_expenses)
+
+	# --- 4. Update Endowment ---
 	var surplus_deficit = total_annual_income - total_annual_expenses
 	current_endowment += surplus_deficit
 	
-	# Reputation is updated via update_reputation_and_ui(), also connected to new_year_started.
-	# We just need to ensure the financial UI (which now includes reputation text) is updated.
-	update_financial_ui() 
+	if DETAILED_LOGGING_ENABLED:
+		print_debug("Annual Surplus/Deficit: $%.2f" % surplus_deficit)
+		print_debug("New Endowment: $%.2f" % current_endowment)
 	
-	# The student daily updates are better suited for _on_time_manager_new_day_has_started
-	# if is_instance_valid(student_manager) and student_manager.has_method("update_all_students_daily_activities"):
-	# 	student_manager.update_all_students_daily_activities()
+	# --- 5. Update Reputation (which also updates UI) ---
+	# The update_reputation_and_ui method is already connected to the new_year_started signal
+	# in your _ready function, so it will be called automatically.
+	# If it wasn't, you would call it here:
+	# update_reputation_and_ui()
 
+	# --- 6. Just ensure Financial UI is up-to-date ---
+	# Since update_reputation_and_ui() also calls update_financial_ui(),
+	# a direct call here might be redundant if the signal connection for reputation is working.
+	# However, calling it directly ensures finances are shown updated even if rep calc changes.
+	if has_method("update_financial_ui"): # Check if method exists
+		update_financial_ui()
+	else:
+		printerr("BuildingManager is missing 'update_financial_ui' method.")
+
+	# Note: Professor-specific annual updates (like years_in_rank, tenure checks)
+	# are handled by ProfessorManager._on_new_year_started_faculty_updates,
+	# which is also connected to TimeManager.new_year_started.
 
 func update_financial_ui(): # Renamed from original, now updates all relevant financial and reputation UI
 	if income_label: income_label.text = "Income (Annual): $" + str(snappedf(total_annual_income, 0.01))
@@ -982,8 +1029,24 @@ func _update_cluster_label(cluster_id_str: String):
 				actual_label.text = str(cluster.current_users) + "/" + str(cluster.total_capacity)
 				actual_label.visible = cluster.total_capacity > 0 # Show only if capacity > 0
 
-# BuildingManager.gd
-# ... (your existing BuildingManager code) ...
+func _on_view_faculty_pressed():
+	if is_instance_valid(faculty_panel):
+		if faculty_panel.visible:
+			faculty_panel.hide_panel()
+		else:
+			# Hide other main panels if they are visible
+			if is_instance_valid(student_list_panel) and student_list_panel.visible:
+				student_list_panel.visible = false
+			if is_instance_valid(program_management_panel) and program_management_panel.visible:
+				if program_management_panel.has_method("hide_panel"): program_management_panel.hide_panel()
+				else: program_management_panel.visible = false
+			if is_instance_valid(scheduling_panel) and scheduling_panel.visible:
+				if scheduling_panel.has_method("hide_panel"): scheduling_panel.hide_panel()
+				else: scheduling_panel.visible = false
+
+			faculty_panel.show_panel()
+	else:
+		print_debug("FacultyPanel instance not available in BuildingManager.")
 
 # IMPORTANT: Ensure this Y-value matches what's used for student navigation 
 # (e.g., Student.EXPECTED_NAVMESH_Y or AcademicManager.ACADEMIC_MGR_STUDENT_EXPECTED_NAVMESH_Y)

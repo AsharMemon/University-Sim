@@ -303,76 +303,99 @@ func _is_single_day_slot_available(classroom_id: String, day_to_check_str: Strin
 
 func schedule_class(offering_id: String, classroom_id: String, primary_day_arg: String, start_time_slot_str_arg: String, selected_instructor_id: String = "") -> bool:
 	if not course_offerings.has(offering_id):
-		printerr("Failed to schedule: Offering '", offering_id, "' not found.")
+		printerr("AcademicManager: Failed to schedule - Offering '", offering_id, "' not found.")
 		return false
 	
 	var day_pattern_to_schedule_str = ""
 	var duration_slots_for_pattern = 0
-	if primary_day_arg == "Mon":
+	
+	# Determine pattern and duration based on the primary day chosen
+	if primary_day_arg == "Mon": # Assumes Monday is the primary day for MWF classes
 		day_pattern_to_schedule_str = "MWF"
-		duration_slots_for_pattern = DURATION_MWF
-	elif primary_day_arg == "Tue":
+		duration_slots_for_pattern = DURATION_MWF # DURATION_MWF should be defined (e.g., 1)
+	elif primary_day_arg == "Tue": # Assumes Tuesday is the primary day for TR classes
 		day_pattern_to_schedule_str = "TR"
-		duration_slots_for_pattern = DURATION_TR
+		duration_slots_for_pattern = DURATION_TR # DURATION_TR should be defined (e.g., 2)
 	else:
-		printerr("Failed to schedule: Invalid primary_day '", primary_day_arg, "'. Must be 'Mon' or 'Tue'.")
+		printerr("AcademicManager: Failed to schedule - Invalid primary_day '", primary_day_arg, "'. Must be 'Mon' or 'Tue'.")
 		return false
 
-	var start_time_slot_idx_val = HOURLY_TIME_SLOTS.find(start_time_slot_str_arg)
+	var start_time_slot_idx_val = HOURLY_TIME_SLOTS.find(start_time_slot_str_arg) # HOURLY_TIME_SLOTS should be defined
 	if start_time_slot_idx_val == -1:
-		printerr("Failed to schedule: Invalid start_time_slot string '", start_time_slot_str_arg, "'.")
+		printerr("AcademicManager: Failed to schedule - Invalid start_time_slot string '", start_time_slot_str_arg, "'.")
 		return false
 		
+	# Check if the class duration exceeds the available time slots for the day
 	if start_time_slot_idx_val + duration_slots_for_pattern > HOURLY_TIME_SLOTS.size():
-		printerr("Failed to schedule: Class duration for pattern '", day_pattern_to_schedule_str, "' exceeds available time slots for offering '", offering_id, "'.")
+		printerr("AcademicManager: Failed to schedule - Class duration for pattern '", day_pattern_to_schedule_str, "' exceeds available time slots for offering '", offering_id, "'.")
 		return false
 	
+	# Check if the slot (and pattern) is available
 	if not is_slot_available(classroom_id, primary_day_arg, start_time_slot_str_arg):
-		print_debug(["Failed to schedule (from schedule_class): Slot not available for offering '", offering_id, "' in '", classroom_id, "' on '", primary_day_arg, "' at '", start_time_slot_str_arg, "'."])
+		if DETAILED_LOGGING_ENABLED: print_debug(["Failed to schedule (from schedule_class): Slot not available for offering '", offering_id, "' in '", classroom_id, "' on '", primary_day_arg, "' at '", start_time_slot_str_arg, "'."])
 		return false
 
-	var offering_data_ref = course_offerings[offering_id]
-	var course_data_copy = university_data.get_course_details(offering_data_ref.course_id)
+	var offering_data_ref = course_offerings[offering_id] # Get reference to update status later
+	var course_data_copy = university_data.get_course_details(offering_data_ref.course_id) # Fetch course details
 	var class_actual_max_capacity = get_classroom_capacity(classroom_id)
 
 	if class_actual_max_capacity <= 0:
-		printerr("Failed to schedule: Classroom '", classroom_id, "' has zero or invalid capacity (", class_actual_max_capacity, ").")
+		printerr("AcademicManager: Failed to schedule - Classroom '", classroom_id, "' has zero or invalid capacity (", class_actual_max_capacity, ").")
 		return false
 
+	# Store detailed information about the scheduled class
 	scheduled_class_details[offering_id] = {
 		"offering_id": offering_id,
 		"course_id": offering_data_ref.course_id,
-		"course_name": course_data_copy.get("name", "N/A"),
+		"course_name": course_data_copy.get("name", "N/A Course Name"),
 		"program_id": offering_data_ref.get("program_id"),
 		"classroom_id": classroom_id,
-		"pattern": day_pattern_to_schedule_str, 
-		"day": primary_day_arg, 
+		"pattern": day_pattern_to_schedule_str,
+		"day": primary_day_arg, # This is the 'primary' day used to determine pattern (Mon or Tue)
 		"start_time_slot": start_time_slot_str_arg,
 		"start_time_slot_index": start_time_slot_idx_val,
 		"duration_slots": duration_slots_for_pattern,
-		"instructor_id": selected_instructor_id,
+		"instructor_id": selected_instructor_id, # <<< Storing the selected instructor ID
 		"max_capacity": class_actual_max_capacity,
-		"enrolled_student_ids": []
+		"enrolled_student_ids": [] # Initialize with no students enrolled
 	}
 	
+	# Book the slots in the classroom_schedules data structure
 	var days_to_book_on_schedule: Array[String] = []
-	if day_pattern_to_schedule_str == "MWF": days_to_book_on_schedule = ["Mon", "Wed", "Fri"]
-	elif day_pattern_to_schedule_str == "TR": days_to_book_on_schedule = ["Tue", "Thu"]
+	if day_pattern_to_schedule_str == "MWF":
+		days_to_book_on_schedule = ["Mon", "Wed", "Fri"]
+	elif day_pattern_to_schedule_str == "TR":
+		days_to_book_on_schedule = ["Tue", "Thu"]
 
 	for day_str_schedule_key in days_to_book_on_schedule:
-		if not classroom_schedules.has(classroom_id): classroom_schedules[classroom_id] = {}
-		if not classroom_schedules[classroom_id].has(day_str_schedule_key): classroom_schedules[classroom_id][day_str_schedule_key] = {}
+		if not classroom_schedules.has(classroom_id):
+			classroom_schedules[classroom_id] = {}
+		if not classroom_schedules[classroom_id].has(day_str_schedule_key):
+			classroom_schedules[classroom_id][day_str_schedule_key] = {}
+			
 		for i in range(duration_slots_for_pattern):
 			var current_slot_idx = start_time_slot_idx_val + i
-			classroom_schedules[classroom_id][day_str_schedule_key][HOURLY_TIME_SLOTS[current_slot_idx]] = offering_id
+			# Ensure we don't try to book beyond defined slots (already checked, but good for safety)
+			if current_slot_idx < HOURLY_TIME_SLOTS.size():
+				classroom_schedules[classroom_id][day_str_schedule_key][HOURLY_TIME_SLOTS[current_slot_idx]] = offering_id
+			else:
+				printerr("AcademicManager: Error during booking classroom_schedules - attempted to book slot index out of bounds.")
+				# This should ideally not happen if prior checks are correct.
+				# Consider how to handle rollback if this occurs mid-booking.
 
+	# Update the status of the course offering
 	offering_data_ref.status = "scheduled"
 	
+	# Emit signals to notify other parts of the game
 	emit_signal("class_scheduled", offering_id, scheduled_class_details[offering_id])
-	emit_signal("schedules_updated")
-	emit_signal("course_offerings_updated")
-	emit_signal("enrollment_changed", offering_id, 0, class_actual_max_capacity)
-	if DETAILED_LOGGING_ENABLED: print_debug(["Class '", offering_id, "' (", offering_data_ref.course_name, ") scheduled successfully in '", classroom_id, "' for pattern '", day_pattern_to_schedule_str, "'."])
+	emit_signal("schedules_updated") # For UI like TimetableGrid to refresh
+	emit_signal("course_offerings_updated") # For UI like UnscheduledCoursesList to refresh
+	emit_signal("enrollment_changed", offering_id, 0, class_actual_max_capacity) # Initial enrollment is 0
+	
+	if DETAILED_LOGGING_ENABLED:
+		print_debug(["Class '", offering_id, "' (", offering_data_ref.get("course_name", course_data_copy.get("name", "N/A")), 
+					 ") scheduled successfully in '", classroom_id, "' for pattern '", day_pattern_to_schedule_str, 
+					 "' with instructor '", (selected_instructor_id if not selected_instructor_id.is_empty() else "Unassigned"), "'."])
 	return true
 
 func unschedule_class(offering_id_to_remove: String) -> bool: 
@@ -1277,3 +1300,18 @@ func get_courses_for_student_current_term(student: Student) -> Array[String]:
 	if is_instance_valid(student) and is_instance_valid(student.degree_progression):
 		return student.degree_progression.get_next_courses_to_take(university_data)
 	return []
+	
+# NEW METHOD (called by ProfessorManager):
+func set_instructor_for_offering(offering_id: String, professor_id: String):
+	if scheduled_class_details.has(offering_id):
+		var old_instructor = scheduled_class_details[offering_id].get("instructor_id", "")
+		scheduled_class_details[offering_id]["instructor_id"] = professor_id
+		if DETAILED_LOGGING_ENABLED: print_debug(["Instructor for offering '%s' changed from '%s' to '%s'" % [offering_id, old_instructor, professor_id]])
+		emit_signal("schedules_updated") # Important for UI
+	elif DETAILED_LOGGING_ENABLED:
+		print_debug(["Attempted to set instructor for non-existent/unscheduled offering '%s'" % offering_id])
+
+func get_instructor_for_offering(offering_id: String) -> String:
+	if scheduled_class_details.has(offering_id):
+		return scheduled_class_details[offering_id].get("instructor_id", "")
+	return ""

@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://dfqndug24dyeb"]
+[gd_scene load_steps=19 format=3 uid="uid://dfqndug24dyeb"]
 
 [ext_resource type="Script" uid="uid://cto4gyufp4b2u" path="res://scripts/BuildingManager.gd" id="1_tefeu"]
 [ext_resource type="Script" uid="uid://1m4n12g83di3" path="res://scripts/RTS_Camera_Controller.gd" id="2_o6xl0"]
@@ -9,6 +9,8 @@
 [ext_resource type="Script" uid="uid://vfea85nn7btw" path="res://scripts/AcademicManager.gd" id="7_o6xl0"]
 [ext_resource type="Script" uid="uid://pn8ver688s3a" path="res://scripts/ProgramManagementUI.gd" id="8_tipki"]
 [ext_resource type="Script" uid="uid://sfyaevvu3ttv" path="res://scripts/SchedulingPanel.gd" id="9_85g3d"]
+[ext_resource type="Script" uid="uid://dq0eosifutc8f" path="res://scripts/ProfessorManager.gd" id="10_choun"]
+[ext_resource type="PackedScene" uid="uid://bo2r7t1e0vy3i" path="res://scenes/FacultyPanel.tscn" id="11_ya4ey"]
 
 [sub_resource type="PhysicalSkyMaterial" id="PhysicalSkyMaterial_0xm2m"]
 
@@ -36,7 +38,7 @@ size = Vector2(100, 100)
 [sub_resource type="BoxShape3D" id="BoxShape3D_lquwl"]
 size = Vector3(100, 0.2, 100)
 
-[node name="BuildingManager" type="Node3D" node_paths=PackedStringArray("time_manager", "academic_manager_node", "date_label", "speed_label", "pause_button", "play_button", "ff_button", "income_label", "expenses_label", "endowment_label", "reputation_label", "total_students_label", "view_students_button", "student_list_panel", "student_list_vbox", "close_student_panel_button", "view_programs_button", "program_management_panel", "view_schedule_button", "scheduling_panel")]
+[node name="BuildingManager" type="Node3D" node_paths=PackedStringArray("time_manager", "academic_manager_node", "date_label", "speed_label", "pause_button", "play_button", "ff_button", "income_label", "expenses_label", "endowment_label", "reputation_label", "total_students_label", "view_students_button", "student_list_panel", "student_list_vbox", "close_student_panel_button", "view_programs_button", "program_management_panel", "view_schedule_button", "scheduling_panel", "faculty_panel")]
 script = ExtResource("1_tefeu")
 time_manager = NodePath("TimeManager")
 academic_manager_node = NodePath("AcademicManager")
@@ -58,6 +60,7 @@ view_programs_button = NodePath("Panel/HBoxContainer/ViewPrograms")
 program_management_panel = NodePath("ProgramManagementPanel")
 view_schedule_button = NodePath("Panel/HBoxContainer/ViewScheduleButton")
 scheduling_panel = NodePath("SchedulingPanel")
+faculty_panel = NodePath("FacultyPanel")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866025, 0.383022, -0.321394, 0, 0.642788, 0.766044, 0.5, -0.663414, 0.55667, 0, 0, 0)
@@ -117,6 +120,9 @@ text = "ViewPrograms"
 [node name="ViewScheduleButton" type="Button" parent="Panel/HBoxContainer"]
 layout_mode = 2
 text = "View Schedules"
+
+[node name="ViewFacultyButton" type="Button" parent="Panel/HBoxContainer"]
+layout_mode = 2
 
 [node name="TimeManager" type="Node" parent="."]
 script = ExtResource("3_tipki")
@@ -356,7 +362,7 @@ size_flags_vertical = 3
 bbcode_enabled = true
 text = "Select a course to see details."
 
-[node name="SchedulingPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager")]
+[node name="SchedulingPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager", "professor_manager")]
 visible = false
 custom_minimum_size = Vector2(800, 500)
 anchors_preset = 8
@@ -372,6 +378,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("9_85g3d")
 academic_manager = NodePath("../AcademicManager")
+professor_manager = NodePath("../ProfessorManager")
 
 [node name="MainHSplit" type="HSplitContainer" parent="SchedulingPanel"]
 layout_mode = 2
@@ -388,6 +395,16 @@ layout_mode = 2
 layout_mode = 2
 text = "Unscheduled Courses"
 horizontal_alignment = 1
+
+[node name="InstructorSelectHBox" type="HBoxContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox"]
+layout_mode = 2
+
+[node name="AssignProfessorLabel" type="Label" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox/InstructorSelectHBox"]
+layout_mode = 2
+text = "Assign Professor"
+
+[node name="InstructorDropdown" type="OptionButton" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox/InstructorSelectHBox"]
+layout_mode = 2
 
 [node name="UnscheduledScroll" type="ScrollContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox"]
 layout_mode = 2
@@ -412,8 +429,19 @@ horizontal_alignment = 1
 layout_mode = 2
 size_flags_vertical = 3
 
+[node name="ProfessorManager" type="Node" parent="." node_paths=PackedStringArray("university_data", "time_manager", "academic_manager")]
+script = ExtResource("10_choun")
+university_data = NodePath("../UniversityDataNode")
+time_manager = NodePath("../TimeManager")
+academic_manager = NodePath("../AcademicManager")
+
+[node name="FacultyPanel" parent="." node_paths=PackedStringArray("professor_manager", "academic_manager") instance=ExtResource("11_ya4ey")]
+professor_manager = NodePath("../ProfessorManager")
+academic_manager = NodePath("../AcademicManager")
+
 [connection signal="pressed" from="Panel/HBoxContainer/BuildDorm" to="." method="_on_select_dorm_pressed"]
 [connection signal="pressed" from="Panel/HBoxContainer/BuildClassroom" to="." method="_on_select_class_pressed"]
+[connection signal="pressed" from="Panel/HBoxContainer/ViewFacultyButton" to="." method="_on_view_faculty_pressed"]
 [connection signal="pressed" from="TopUI/HBoxContainer/PauseButton" to="." method="_on_pause_button_pressed"]
 [connection signal="pressed" from="TopUI/HBoxContainer/PlayButton" to="." method="_on_play_button_pressed"]
 [connection signal="pressed" from="TopUI/HBoxContainer/FastForwardButton" to="." method="_on_ff_button_pressed"]

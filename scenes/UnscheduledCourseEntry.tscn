@@ -15,7 +15,13 @@ size_flags_horizontal = 3
 size_flags_vertical = 0
 script = ExtResource("1_4x5oi")
 
-[node name="CourseNameLabel" type="Label" parent="."]
+[node name="HBoxContainer" type="HBoxContainer" parent="."]
 layout_mode = 0
 offset_right = 40.0
-offset_bottom = 23.0
+offset_bottom = 40.0
+
+[node name="CourseNameLabel" type="Label" parent="HBoxContainer"]
+layout_mode = 2
+
+[node name="ProgramIDLabel" type="Label" parent="HBoxContainer"]
+layout_mode = 2

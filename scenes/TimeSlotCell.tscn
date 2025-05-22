@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bjbiydapxmxb4" path="res://scripts/TimeSlotCell.gd" id="1_8bhyl"]
 
-[node name="TimeSlotCell" type="PanelContainer"]
+[node name="TimeSlotCell" type="PanelContainer" node_paths=PackedStringArray("content_label", "instructor_name_label")]
 custom_minimum_size = Vector2(0, 50)
 anchors_preset = 15
 anchor_right = 1.0
@@ -12,6 +12,8 @@ grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource("1_8bhyl")
+content_label = NodePath("ContentLabel")
+instructor_name_label = NodePath("InstructorNameLabel")
 
 [node name="ContentLabel" type="Label" parent="."]
 custom_minimum_size = Vector2(100, 50)
@@ -27,3 +29,6 @@ custom_minimum_size = Vector2(50, 0)
 layout_mode = 2
 size_flags_horizontal = 8
 text = "X"
+
+[node name="InstructorNameLabel" type="Label" parent="."]
+layout_mode = 2

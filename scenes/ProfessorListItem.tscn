@@ -1,0 +1,36 @@
+[gd_scene load_steps=2 format=3 uid="uid://cpmsc4433vbkd"]
+
+[ext_resource type="Script" uid="uid://cxtj6xdio25ms" path="res://scripts/ProfessorListItem.gd" id="1_kbt72"]
+
+[node name="ProfessorListItem" type="Button" node_paths=PackedStringArray("name_label", "rank_label", "specialization_label", "salary_label")]
+offset_right = 889.0
+offset_bottom = 40.0
+script = ExtResource("1_kbt72")
+name_label = NodePath("HBoxContainer/NameLabel")
+rank_label = NodePath("HBoxContainer/RankLabel")
+specialization_label = NodePath("HBoxContainer/SpecializationLabel")
+salary_label = NodePath("HBoxContainer/SalaryLabel")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="."]
+layout_mode = 2
+offset_right = 885.0
+offset_bottom = 40.0
+
+[node name="NameLabel" type="Label" parent="HBoxContainer"]
+layout_mode = 2
+text = "Prof. Name"
+
+[node name="RankLabel" type="Label" parent="HBoxContainer"]
+layout_mode = 2
+text = "Rank"
+
+[node name="SpecializationLabel" type="Label" parent="HBoxContainer"]
+layout_mode = 2
+text = "Specialization"
+
+[node name="SalaryLabel" type="Label" parent="HBoxContainer"]
+layout_mode = 2
+text = "$50000"
+
+[node name="StatusIcon" type="TextureRect" parent="HBoxContainer"]
+layout_mode = 2

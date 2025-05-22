@@ -1,0 +1,151 @@
+[gd_scene load_steps=2 format=3 uid="uid://bo2r7t1e0vy3i"]
+
+[ext_resource type="Script" uid="uid://bm6dtxa24rl23" path="res://scripts/FacultyPanel.gd" id="1_hltr0"]
+
+[node name="FacultyPanel" type="PanelContainer" node_paths=PackedStringArray("tab_container", "hired_staff_list_vbox", "applicant_list_vbox", "detail_name_label", "detail_rank_label", "detail_specialization_label", "detail_salary_label", "detail_teaching_skill_label", "detail_research_skill_label", "detail_morale_label", "detail_tenure_label", "detail_publications_label", "detail_courses_label", "detail_researching_label", "hire_button", "fire_button", "assign_course_button", "assign_research_button", "promote_button", "tenure_review_button", "close_faculty_panel_button")]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_hltr0")
+tab_container = NodePath("MarginContainer/MainVBox/FacultyTabContainer")
+hired_staff_list_vbox = NodePath("MarginContainer/MainVBox/FacultyTabContainer/HiredStaffTab")
+applicant_list_vbox = NodePath("MarginContainer/MainVBox/FacultyTabContainer/ApplicantsTab/ScrollContainer/ApplicantsListVBox")
+detail_name_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailNameLabel")
+detail_rank_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailRankLabel")
+detail_specialization_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailSpecializationLabel")
+detail_salary_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailSalaryLabel")
+detail_teaching_skill_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailTeachingSkillLabel")
+detail_research_skill_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailResearchSkillLabel")
+detail_morale_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailMoraleLabel")
+detail_tenure_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailTenureLabel")
+detail_publications_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailPublicationsLabel")
+detail_courses_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailCoursesLabel")
+detail_researching_label = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/DetailResearchingLabel")
+hire_button = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox/HireButton")
+fire_button = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox/FireButton")
+assign_course_button = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox/AssignCourseButton")
+assign_research_button = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox/AssignResearchButton")
+promote_button = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox/PromoteButton")
+tenure_review_button = NodePath("MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox/TenureReviewButton")
+close_faculty_panel_button = NodePath("MarginContainer/MainVBox/CloseButton")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="MainVBox" type="VBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+
+[node name="HeaderLabel" type="Label" parent="MarginContainer/MainVBox"]
+layout_mode = 2
+text = "Faculty Management"
+
+[node name="FacultyTabContainer" type="TabContainer" parent="MarginContainer/MainVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+current_tab = 1
+
+[node name="HiredStaffTab" type="VBoxContainer" parent="MarginContainer/MainVBox/FacultyTabContainer"]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 0
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/MainVBox/FacultyTabContainer/HiredStaffTab"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HiredStaffListVBox" type="VBoxContainer" parent="MarginContainer/MainVBox/FacultyTabContainer/HiredStaffTab/ScrollContainer"]
+layout_mode = 2
+
+[node name="ApplicantsTab" type="PanelContainer" parent="MarginContainer/MainVBox/FacultyTabContainer"]
+layout_mode = 2
+metadata/_tab_index = 1
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/MainVBox/FacultyTabContainer/ApplicantsTab"]
+layout_mode = 2
+
+[node name="ApplicantsListVBox" type="VBoxContainer" parent="MarginContainer/MainVBox/FacultyTabContainer/ApplicantsTab/ScrollContainer"]
+layout_mode = 2
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/MainVBox"]
+layout_mode = 2
+
+[node name="ProfessorDetailPanel" type="PanelContainer" parent="MarginContainer/MainVBox"]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="MarginContainer/MainVBox/ProfessorDetailPanel"]
+layout_mode = 2
+
+[node name="DetailVBox" type="VBoxContainer" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer"]
+layout_mode = 2
+
+[node name="DetailNameLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailRankLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailSpecializationLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailSalaryLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailTeachingSkillLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailResearchSkillLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailMoraleLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailTenureLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailPublicationsLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailCoursesLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="DetailResearchingLabel" type="Label" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="ActionButtonsHBox" type="HBoxContainer" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox"]
+layout_mode = 2
+
+[node name="HireButton" type="Button" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox"]
+layout_mode = 2
+text = "Hire Professor"
+
+[node name="FireButton" type="Button" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox"]
+layout_mode = 2
+text = "Fire Professor"
+
+[node name="AssignCourseButton" type="Button" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox"]
+layout_mode = 2
+text = "Assign Course"
+
+[node name="AssignResearchButton" type="Button" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox"]
+layout_mode = 2
+text = "Assign Research"
+
+[node name="PromoteButton" type="Button" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox"]
+layout_mode = 2
+text = "Promote"
+
+[node name="TenureReviewButton" type="Button" parent="MarginContainer/MainVBox/ProfessorDetailPanel/MarginContainer/DetailVBox/ActionButtonsHBox"]
+layout_mode = 2
+text = "Review for Tenure"
+
+[node name="CloseButton" type="Button" parent="MarginContainer/MainVBox"]
+layout_mode = 2
+text = "Close"

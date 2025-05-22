@@ -107,6 +107,28 @@ const PROGRAM_CURRICULUM_STRUCTURE: Dictionary = {
 	}
 }
 
+const PROFESSOR_RANKS_DATA: Dictionary = {
+	Professor.Rank.LECTURER: {"base_salary_min": 35000, "base_salary_max": 55000, "tenure_possible": false},
+	Professor.Rank.ASSISTANT_PROFESSOR: {"base_salary_min": 50000, "base_salary_max": 70000, "tenure_possible": true, "years_to_tenure_review": 6},
+	Professor.Rank.ASSOCIATE_PROFESSOR: {"base_salary_min": 65000, "base_salary_max": 90000, "tenure_possible": true}, # Often tenured upon promotion
+	Professor.Rank.FULL_PROFESSOR: {"base_salary_min": 80000, "base_salary_max": 120000, "tenure_possible": true}, # Often tenured
+	Professor.Rank.ADJUNCT: {"base_salary_min": 3000, "base_salary_max": 6000, "per_course": true, "tenure_possible": false} # Example: paid per course
+}
+
+const RESEARCH_PROJECT_TEMPLATES: Dictionary = {
+	"RP_CS_BASIC_ALGO": {
+		"name": "Basic Algorithm Exploration", "field": Professor.Specialization.COMPUTER_SCIENCE,
+		"duration_days": 90, "cost_range": [500, 2000], "difficulty": 30, # 0-100
+		"potential_outcomes": ["small_publication", "minor_grant_chance"]
+	},
+	"RP_HIST_ARCHIVAL": {
+		"name": "Archival Document Study", "field": Professor.Specialization.HISTORY,
+		"duration_days": 120, "cost_range": [1000, 3000], "difficulty": 40,
+		"potential_outcomes": ["medium_publication", "reputation_boost_small"]
+	}
+	# Add more templates
+}
+
 
 func _ready():
 	print("UniversityData Node is ready. Name: " + self.name)
@@ -247,3 +269,9 @@ func check_prerequisites_met(course_id_to_check: String, completed_course_ids: A
 
 func print_debug(message: String): # Simple debug print for this class
 	print("[UniversityData]: %s" % message)
+
+func get_rank_data(rank_enum: Professor.Rank) -> Dictionary:
+	return PROFESSOR_RANKS_DATA.get(rank_enum, {}).duplicate(true)
+
+func get_research_project_template(template_id: String) -> Dictionary:
+	return RESEARCH_PROJECT_TEMPLATES.get(template_id, {}).duplicate(true)
