@@ -1466,6 +1466,20 @@ func get_instructor_for_offering(offering_id: String) -> String: # [cite: 1]
 		return course_offerings[offering_id].get("instructor_id", "") # [cite: 1]
 	return "" # [cite: 1]
 
+func get_schedule_for_professor(professor_id: String) -> Array[Dictionary]:
+	var prof_schedule: Array[Dictionary] = []
+	if not is_instance_valid(professor_manager): return prof_schedule # Guard
+	
+	var prof_data: Professor = professor_manager.get_professor_by_id(professor_id)
+	if not is_instance_valid(prof_data): return prof_schedule
+
+	for offering_id in prof_data.courses_teaching_ids:
+		var offering_details = get_offering_details(offering_id) # Your existing comprehensive method
+		if not offering_details.is_empty() and offering_details.get("status") == "scheduled":
+			# Ensure details include classroom_id, pattern, start_time_slot, duration_slots
+			prof_schedule.append(offering_details)
+	return prof_schedule
+	
 func print_debug(message_parts): # [cite: 1]
 	var final_message = "[AcademicManager]: " # [cite: 1]
 	if message_parts is String: # [cite: 1]

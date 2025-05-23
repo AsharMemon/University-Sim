@@ -2,6 +2,8 @@
 class_name TimeManager
 extends Node
 
+const DETAILED_LOGGING_ENABLED: bool = true # Or false if you want less logging from this script by default
+
 # --- Macro Time Signals ---
 signal date_changed(day: int, month: int, year: int)
 signal new_day_has_started(day: int, month: int, year: int)
@@ -70,7 +72,6 @@ var has_emitted_term_start_this_year: Dictionary = { # Tracks if Fall/Spring/Sum
 	AcademicTerm.SPRING_BREAK_MID: false,
 	AcademicTerm.SUMMER_BREAK_MAIN: false,
 }
-
 
 # --- Visual Time Loop Variables ---
 @export var seconds_per_visual_hour_slot: float = 120.0
@@ -397,6 +398,61 @@ func get_next_academic_slot_info() -> Dictionary:
 			return {"day": next_slot_day_str, "slot": "InvalidTime"}
 			
 	return {"day": next_slot_day_str, "slot": next_slot_time_str}
+
+# New helper function
+func get_time_slot_after_duration(start_slot_str: String, duration_in_slots: int) -> String:
+	if start_slot_str.is_empty() or duration_in_slots <= 0:
+		printerr("TimeManager: Invalid input for get_time_slot_after_duration. Start: '%s', Duration: %d" % [start_slot_str, duration_in_slots])
+		return start_slot_str # Or return an error indicator like "InvalidTime"
+
+	var start_index = VISUAL_HOURLY_TIME_SLOTS.find(start_slot_str)
+	if start_index == -1:
+		printerr("TimeManager: Start time slot '%s' not found in HOURLY_TIME_SLOTS." % start_slot_str)
+		return "InvalidTime" # Or handle error appropriately
+
+	# The end slot is where the activity concludes, so it's effectively start_index + duration.
+	# If a 1-slot class starts at 0900 (index 1), it ends *at the beginning of* the slot at index 1 + 1 = 2 (i.e., 1000).
+	var end_slot_start_index = start_index + duration_in_slots
+
+	if end_slot_start_index < VISUAL_HOURLY_TIME_SLOTS.size():
+		return VISUAL_HOURLY_TIME_SLOTS[end_slot_start_index]
+	else:
+		# Activity extends beyond the defined time slots for the day
+		# You might want to return the last slot, or a special "EndOfDay" marker
+		if DETAILED_LOGGING_ENABLED: # Assuming DETAILED_LOGGING_ENABLED is a const in your TimeManager
+			print("TimeManager: Activity starting at %s for %d slots extends beyond defined timetable. Returning last available slot or end marker." % [start_slot_str, duration_in_slots])
+		return VISUAL_HOURLY_TIME_SLOTS[VISUAL_HOURLY_TIME_SLOTS.size() - 1] # Or a specific "EndOfDayPlus" marker
+		# Alternatively, if your simulation should handle overflowing into next day, this logic would be more complex.
+		# For typical class schedules, it usually means it ends at the last slot of the day.
+
+# You might also need the is_time_slot_after function if it's not already there:
+func is_time_slot_after(day1: String, slot1: String, day2: String, slot2: String) -> bool:
+	# First, compare days if your DAYS_OF_WEEK array is ordered
+	# This is a simplified version that only compares slots on the same day effectively
+	# or assumes day1 and day2 are sequential if different.
+	# For a full comparison, you'd need to convert days to indices as well.
+	
+	# If days are different, you need a proper day comparison.
+	# For now, let's assume we are primarily comparing slots within the same day for the professor simulation.
+	if day1 != day2:
+		# This requires knowing the order of days. Example:
+		var days_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] # Define your week order
+		var day1_idx = days_order.find(day1)
+		var day2_idx = days_order.find(day2)
+		if day1_idx != -1 and day2_idx != -1:
+			if day1_idx > day2_idx: return true
+			if day1_idx < day2_idx: return false
+		# If days are not in known order or one is invalid, fall back to slot comparison (less accurate)
+
+	var index1 = VISUAL_HOURLY_TIME_SLOTS.find(slot1)
+	var index2 = VISUAL_HOURLY_TIME_SLOTS.find(slot2)
+
+	if index1 == -1 or index2 == -1:
+		# One of the slots is invalid, cannot compare reliably
+		printerr("TimeManager: Invalid slot in is_time_slot_after. Slot1: '%s', Slot2: '%s'" % [slot1, slot2])
+		return false # Or handle as an error
+
+	return index1 > index2
 	
 func time_slot_str_to_hour_int(time_slot_str: String) -> int:
 	if not time_slot_str.is_empty() and time_slot_str.length() >= 2:

@@ -21,6 +21,10 @@ var next_professor_id: int = 1
 
 const DETAILED_LOGGING_ENABLED: bool = true
 
+const ProfessorActorScene: PackedScene = preload("res://actors/ProfessorActor.tscn") # Path to your new scene
+var active_professor_nodes: Dictionary = {} # professor_id -> ProfessorActor node
+var simulated_professors_data: Dictionary = {} # professor_id -> data for off-map simulation
+
 func _ready():
 	if not is_instance_valid(university_data): # Fallback if needed
 		university_data = get_node_or_null("/root/MainScene/UniversityDataNode")
@@ -29,10 +33,14 @@ func _ready():
 	if not is_instance_valid(academic_manager): # Fallback if needed
 		academic_manager = get_node_or_null("/root/MainScene/AcademicManager")
 	
-	if is_instance_valid(time_manager) and time_manager.has_signal("new_year_started"):
-		if not time_manager.is_connected("new_year_started", Callable(self, "_on_new_year_started_faculty_updates")):
-			time_manager.new_year_started.connect(Callable(self, "_on_new_year_started_faculty_updates"))
+	if not ProfessorActorScene:
+		printerr("ProfessorManager: CRITICAL - ProfessorActorScene not preloaded!")
 	
+	# Connect to TimeManager visual hour change if needed for simulated profs
+	if is_instance_valid(time_manager) and time_manager.has_signal("visual_hour_slot_changed"):
+		if not time_manager.is_connected("visual_hour_slot_changed", Callable(self, "_on_visual_hour_changed_for_simulation")):
+			time_manager.visual_hour_slot_changed.connect(Callable(self, "_on_visual_hour_changed_for_simulation"))
+
 	_generate_initial_applicants(5) # Generate some initial applicants
 	print_debug("ProfessorManager ready. Applicant pool size: %d" % applicant_pool.size())
 
@@ -125,6 +133,37 @@ func hire_professor(applicant_professor: Professor, offered_salary: float = -1.0
 	applicant_pool.erase(hired_prof)
 	hired_professors[hired_prof.professor_id] = hired_prof
 	
+	# --- NEW: Instantiate Professor Actor ---
+	if ProfessorActorScene and ProfessorActorScene.can_instantiate():
+		var actor_instance = ProfessorActorScene.instantiate() as ProfessorActor
+		var prof_parent = get_parent().get_node_or_null("FacultyActors") # DESIGNATE A PARENT NODE FOR PROF ACTORS
+		if not is_instance_valid(prof_parent):
+			printerr("ProfessorManager: Cannot find parent node '/root/MainScene/FacultyActors' for ProfessorActor. Actor not spawned.")
+		else:
+			prof_parent.add_child(actor_instance)
+			# Try to find a spawn point (e.g., near an admin building or a generic spawn)
+			var spawn_pos = Vector3.ZERO # Default, or find a suitable spawn point
+			if is_instance_valid(academic_manager) and is_instance_valid(academic_manager.building_manager):
+				# Example: Try to get an entrance of an admin building or a default spawn
+				# spawn_pos = academic_manager.building_manager_ref.get_random_building_entrance("admin")
+				pass # Implement spawn point logic as needed
+
+			actor_instance.global_position = spawn_pos
+			actor_instance.initialize(hired_prof.professor_id, hired_prof.professor_name,
+									  self, academic_manager, time_manager, 
+									  academic_manager.building_manager if is_instance_valid(academic_manager) else null)
+			
+			active_professor_nodes[hired_prof.professor_id] = actor_instance
+			
+			# Connect to the actor's despawn signal
+			if not actor_instance.is_connected("professor_despawn_data_for_manager", Callable(self, "_on_professor_actor_despawned")):
+				actor_instance.professor_despawn_data_for_manager.connect(Callable(self, "_on_professor_actor_despawned"))
+
+			if DETAILED_LOGGING_ENABLED: print_debug("Spawned ProfessorActor for %s" % hired_prof.professor_name)
+	else:
+		printerr("ProfessorManager: ProfessorActorScene not loaded or cannot be instantiated.")
+	# --- END NEW ---
+	
 	emit_signal("faculty_member_hired", hired_prof.professor_id, hired_prof)
 	emit_signal("faculty_list_updated")
 	print_debug("Hired: %s (%s) as %s. Salary: $%.2f" % [hired_prof.professor_name, hired_prof.professor_id, hired_prof.get_rank_string(), hired_prof.annual_salary])
@@ -132,6 +171,17 @@ func hire_professor(applicant_professor: Professor, offered_salary: float = -1.0
 
 func fire_professor(professor_id: String):
 	if hired_professors.has(professor_id):
+		# --- NEW: Remove Professor Actor ---
+		if active_professor_nodes.has(professor_id):
+			var actor_node = active_professor_nodes[professor_id]
+			if is_instance_valid(actor_node):
+				actor_node.queue_free()
+			active_professor_nodes.erase(professor_id)
+			if DETAILED_LOGGING_ENABLED: print_debug("Removed ProfessorActor for %s" % professor_id)
+		if simulated_professors_data.has(professor_id): # Also clear from simulation if they were teaching
+			simulated_professors_data.erase(professor_id)
+		# --- END NEW ---
+		
 		var prof_to_fire: Professor = hired_professors[professor_id]
 		
 		# Unassign from all courses they are teaching
@@ -252,8 +302,83 @@ func get_total_faculty_salary_expense() -> float:
 		total_salaries += hired_professors[prof_id].annual_salary
 	return total_salaries
 
-func print_debug(message_parts):
-	if not DETAILED_LOGGING_ENABLED: return
-	var final_message = "[ProfManager]: " # Changed prefix
-	# ... (same as your print_debug in ProgramManagementUI) ...
-	print(final_message)
+# --- NEW: Handle Professor Actor Despawn (e.g., when starting to teach) ---
+func _on_professor_actor_despawned(data: Dictionary):
+	var prof_id = data.get("professor_id")
+	if DETAILED_LOGGING_ENABLED: print_debug(["ProfessorActor %s despawned. Activity: %s" % [prof_id, data.get("activity_after_despawn")]])
+	
+	if prof_id and active_professor_nodes.has(prof_id):
+		if data.get("activity_after_despawn") == "teaching":
+			var offering_details = academic_manager.get_offering_details(data.activity_target_data.offering_id)
+			var sim_data_entry = data.duplicate(true) # Create a mutable copy to add to
+
+			# Ensure sim_activity_day gets the correct day teaching started on
+			sim_data_entry["sim_activity_day"] = data.get("current_day_of_despawn", "") # Crucial fix
+			
+			sim_data_entry["sim_activity_end_time_slot"] = time_manager.get_time_slot_after_duration(
+				offering_details.get("start_time_slot"), 
+				offering_details.get("duration_slots", 1)
+			)
+			simulated_professors_data[prof_id] = sim_data_entry # Store the modified data
+			if DETAILED_LOGGING_ENABLED:
+				print_debug(["  Prof %s now teaching. Despawn Day: %s, Offering Start Slot: %s, Duration: %s slots, Calculated End Slot: %s" % \
+					[prof_id, sim_data_entry.sim_activity_day, offering_details.get("start_time_slot"), \
+					 offering_details.get("duration_slots", 1), sim_data_entry.sim_activity_end_time_slot]])
+		# else handle other despawn activities
+	else:
+		printerr("ProfessorManager: Received despawn data for unknown or non-active prof_id: %s" % str(prof_id))
+		
+# --- NEW: Simulate off-map professors (e.g., teaching duration) ---
+func _on_visual_hour_changed_for_simulation(day_str: String, time_slot_str: String):
+	if simulated_professors_data.is_empty(): return
+
+	var prof_ids_to_respawn: Array[String] = []
+	for prof_id in simulated_professors_data:
+		var sim_data = simulated_professors_data[prof_id]
+		if sim_data.get("activity_after_despawn") == "teaching":
+			var teaching_day = sim_data.get("sim_activity_day", "") # Use the stored day
+			var class_end_slot = sim_data.get("sim_activity_end_time_slot", "")
+
+			if DETAILED_LOGGING_ENABLED:
+				print_debug("Sim check for Prof %s: Current Time: %s %s. Stored Teaching Day: %s. Stored Class End Slot: %s" % [prof_id, day_str, time_slot_str, teaching_day, class_end_slot])
+
+			if day_str == teaching_day and \
+			   (time_slot_str == class_end_slot or \
+				(is_instance_valid(time_manager) and time_manager.has_method("is_time_slot_after") and \
+				 time_manager.is_time_slot_after(day_str, time_slot_str, teaching_day, class_end_slot))):
+				
+				prof_ids_to_respawn.append(prof_id)
+				if DETAILED_LOGGING_ENABLED: print_debug("Prof %s finished teaching. Queued for respawn." % prof_id)
+	
+	for prof_id_to_respawn in prof_ids_to_respawn:
+		if active_professor_nodes.has(prof_id_to_respawn):
+			var actor_node = active_professor_nodes[prof_id_to_respawn]
+			if is_instance_valid(actor_node) and actor_node.has_method("finish_activity_and_respawn"):
+				var sim_prof_data = simulated_professors_data[prof_id_to_respawn]
+				var target_data_dict = sim_prof_data.get("activity_target_data", {})
+				var classroom_id_of_class = target_data_dict.get("classroom_id", "")
+				
+				var exit_loc = Vector3.ZERO 
+				if not classroom_id_of_class.is_empty() and is_instance_valid(academic_manager) and \
+				   is_instance_valid(academic_manager.building_manager) and \
+				   academic_manager.building_manager.has_method("get_building_exit_location"): # Check for actual BuildingManager
+					
+					exit_loc = academic_manager.building_manager.get_building_exit_location(classroom_id_of_class)
+					if exit_loc == Vector3.ZERO and DETAILED_LOGGING_ENABLED:
+						print_debug("BuildingManager returned ZERO for exit of classroom '%s'. Professor might spawn at map origin or fallback." % classroom_id_of_class)
+						# Fallback to classroom center if exit point fails
+						var classroom_center = academic_manager.get_classroom_location(classroom_id_of_class)
+						if classroom_center != Vector3.ZERO:
+							exit_loc = classroom_center # Using center, Y will be adjusted by ProfessorActor
+							if DETAILED_LOGGING_ENABLED: print_debug("Fallback exit for %s: using classroom location %s" % [classroom_id_of_class, str(exit_loc.round())])
+				else:
+					if DETAILED_LOGGING_ENABLED: print_debug("Could not get specific exit location for classroom %s via BuildingManager. Using ZERO or classroom center as fallback." % classroom_id_of_class)
+					if is_instance_valid(academic_manager) and not classroom_id_of_class.is_empty() and academic_manager.has_method("get_classroom_location"):
+						exit_loc = academic_manager.get_classroom_location(classroom_id_of_class)
+					
+				if DETAILED_LOGGING_ENABLED: print_debug("Final calculated exit_loc for prof %s: %s" % [prof_id_to_respawn, str(exit_loc.round())])
+				
+				(actor_node as ProfessorActor).finish_activity_and_respawn(exit_loc)
+				simulated_professors_data.erase(prof_id_to_respawn)
+		else:
+			printerr("ProfessorManager: Tried to respawn prof %s, but no active node found in cache." % prof_id_to_respawn)

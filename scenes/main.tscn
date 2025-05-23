@@ -458,6 +458,8 @@ academic_manager = NodePath("../AcademicManager")
 professor_manager = NodePath("../ProfessorManager")
 academic_manager = NodePath("../AcademicManager")
 
+[node name="FacultyActors" type="Node3D" parent="."]
+
 [connection signal="pressed" from="Panel/HBoxContainer/BuildDorm" to="." method="_on_select_dorm_pressed"]
 [connection signal="pressed" from="Panel/HBoxContainer/BuildClassroom" to="." method="_on_select_class_pressed"]
 [connection signal="pressed" from="Panel/HBoxContainer/ViewFacultyButton" to="." method="_on_view_faculty_pressed"]

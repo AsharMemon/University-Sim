@@ -1,0 +1,24 @@
+[gd_scene load_steps=5 format=3 uid="uid://c7sramp1ovoyn"]
+
+[ext_resource type="Script" uid="uid://cgewgde6o7p1m" path="res://scenes/ProfessorActor.gd" id="1_3kktw"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3kktw"]
+albedo_color = Color(0.854394, 0.260781, 0.289311, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_3kktw"]
+material = SubResource("StandardMaterial3D_3kktw")
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_3kktw"]
+
+[node name="ProfessorActor" type="CharacterBody3D"]
+script = ExtResource("1_3kktw")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+
+[node name="Visuals" type="MeshInstance3D" parent="."]
+mesh = SubResource("CapsuleMesh_3kktw")
+
+[node name="Label3D" type="Label3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CapsuleShape3D_3kktw")
