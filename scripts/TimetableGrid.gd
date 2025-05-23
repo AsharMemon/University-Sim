@@ -1,5 +1,6 @@
 # TimetableGrid.gd
 # Script for the timetable grid of a single classroom.
+class_name TimetableGrid
 extends PanelContainer
 
 # --- Node References ---
@@ -275,7 +276,30 @@ func _get_cell_at_position(p_pos_local_to_timetable_grid: Vector2) -> Control:
 
 func set_scheduling_ui_parent(ui_parent: SchedulingPanel): # Called by SchedulingUI
 	self.scheduling_ui_parent = ui_parent
-	
+
+# --- NEW: Overlay Management Functions ---
+func display_professor_availability_overlay(professor_id_to_check: String):
+	if not is_instance_valid(time_slots_grid) or not is_instance_valid(academic_manager):
+		if DETAILED_LOGGING_ENABLED: print_debug("Cannot display prof availability overlay: time_slots_grid or AM invalid.")
+		return
+	if DETAILED_LOGGING_ENABLED: print_debug(["TimetableGrid: Displaying overlay for professor:", professor_id_to_check])
+
+	for child_node in time_slots_grid.get_children():
+		if child_node is PanelContainer and child_node.has_method("show_availability_for_professor"): # Assuming TimeSlotCell is PanelContainer
+			var cell: TimeSlotCell = child_node as TimeSlotCell # Cast for type safety if TimeSlotCell.gd is class_name
+			cell.show_availability_for_professor(professor_id_to_check, academic_manager)
+
+func clear_professor_availability_overlay():
+	if not is_instance_valid(time_slots_grid):
+		if DETAILED_LOGGING_ENABLED: print_debug("Cannot clear prof availability overlay: time_slots_grid invalid.")
+		return
+	if DETAILED_LOGGING_ENABLED: print_debug(["TimetableGrid: Clearing professor availability overlay."])
+
+	for child_node in time_slots_grid.get_children():
+		if child_node is PanelContainer and child_node.has_method("revert_display_from_overlay"):
+			var cell: TimeSlotCell = child_node as TimeSlotCell
+			cell.revert_display_from_overlay()
+			
 func print_debug(message_parts): # Copied from your script
 	if not DETAILED_LOGGING_ENABLED: return
 	var final_message = "[TimetableGrid C:%s]: " % classroom_id.right(4) if not classroom_id.is_empty() else "[TimetableGrid]: "

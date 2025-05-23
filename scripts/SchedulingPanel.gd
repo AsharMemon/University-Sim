@@ -16,9 +16,9 @@ const UnscheduledCourseEntryScene: PackedScene = preload("res://scenes/Unschedul
 const ProfessorListEntryScene: PackedScene = preload("res://scenes/ProfessorListEntry.tscn") # New
 const TimetableGridScene: PackedScene = preload("res://scenes/TimetableGrid.tscn")
 
-# --- State ---
-# var _current_drag_type: String = "" # Example for more advanced overlay
-# var _dragged_professor_id: String = "" # Example for more advanced overlay
+# --- State for Overlay ---
+var _is_professor_being_dragged_for_overlay: bool = false
+var _dragged_professor_id_for_overlay: String = ""
 
 const DETAILED_LOGGING_ENABLED: bool = true
 
@@ -160,10 +160,13 @@ func _populate_professor_list(filter_course_id: String = ""):
 			professor_list_vbox.add_child(entry_instance)
 			if entry_instance.has_method("setup"):
 				entry_instance.setup(prof)
-				# Optional: Connect to signals from ProfessorListEntry for advanced overlay control
-				# if not entry_instance.is_connected("professor_drag_started", Callable(self, "_on_professor_drag_started")):
-				# 	entry_instance.professor_drag_started.connect(Callable(self, "_on_professor_drag_started"))
 				professors_added_count += 1
+				# --- NEW: Connect to drag signals from ProfessorListEntry ---
+				if not entry_instance.is_connected("professor_drag_started", Callable(self, "_on_professor_drag_started_for_overlay")):
+					entry_instance.professor_drag_started.connect(Callable(self, "_on_professor_drag_started_for_overlay"))
+				if not entry_instance.is_connected("professor_drag_ended", Callable(self, "_on_professor_drag_ended_for_overlay")):
+					entry_instance.professor_drag_ended.connect(Callable(self, "_on_professor_drag_ended_for_overlay"))
+				# --- END NEW ---
 		else:
 			printerr("Failed to instantiate ProfessorListEntryScene.")
 	
@@ -277,6 +280,39 @@ func hide_panel():
 	# Optional: clear any drag states if panel is hidden mid-drag
 	# _on_drag_ended_anywhere()
 
+# --- NEW: Signal Handlers for Professor Drag Overlay ---
+func _on_professor_drag_started_for_overlay(professor_id: String):
+	if DETAILED_LOGGING_ENABLED: print_debug(["Professor drag started for overlay. Prof ID:", professor_id])
+	_is_professor_being_dragged_for_overlay = true
+	_dragged_professor_id_for_overlay = professor_id
+	
+	var current_tab_node = classroom_tabs.get_current_tab_control()
+	if is_instance_valid(current_tab_node) and current_tab_node is TimetableGrid:
+		var current_timetable_grid: TimetableGrid = current_tab_node
+		if current_timetable_grid.has_method("display_professor_availability_overlay"):
+			current_timetable_grid.display_professor_availability_overlay(_dragged_professor_id_for_overlay)
+		else:
+			printerr("SchedulingUI: Current TimetableGrid is missing 'display_professor_availability_overlay' method.")
+	elif DETAILED_LOGGING_ENABLED:
+		print_debug(["SchedulingUI: No valid TimetableGrid found in current tab to show overlay."])
+
+func _on_professor_drag_ended_for_overlay():
+	if not _is_professor_being_dragged_for_overlay: # Prevent clearing if no drag was active for overlay
+		return
+
+	if DETAILED_LOGGING_ENABLED: print_debug(["Professor drag ended for overlay. Clearing."])
+	_is_professor_being_dragged_for_overlay = false
+	_dragged_professor_id_for_overlay = ""
+
+	var current_tab_node = classroom_tabs.get_current_tab_control()
+	if is_instance_valid(current_tab_node) and current_tab_node is TimetableGrid:
+		var current_timetable_grid: TimetableGrid = current_tab_node
+		if current_timetable_grid.has_method("clear_professor_availability_overlay"):
+			current_timetable_grid.clear_professor_availability_overlay()
+		else:
+			printerr("SchedulingUI: Current TimetableGrid is missing 'clear_professor_availability_overlay' method.")
+	elif DETAILED_LOGGING_ENABLED:
+		print_debug(["SchedulingUI: No valid TimetableGrid found in current tab to clear overlay."])
 
 # --- Debug Utility ---
 func print_debug(message_parts):

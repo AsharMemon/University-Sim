@@ -1,5 +1,6 @@
 # TimeSlotCell.gd
 # Script for an individual cell in the timetable grid.
+class_name TimeSlotCell
 extends PanelContainer
 
 # --- Node References ---
@@ -33,6 +34,14 @@ var is_pending_schedule: bool = false # <<< NEW state variable
 # --- Visual State Colors --- (add one for pending)
 const COLOR_PENDING_PROF_BG = Color(1.0, 0.9, 0.6, 0.2) # Yellowish for pending
 
+# --- NEW: StyleBoxes for Overlay ---
+var overlay_prof_busy_style: StyleBoxFlat
+var overlay_prof_available_style: StyleBoxFlat
+var overlay_prof_valid_target_style: StyleBoxFlat # For pending course this prof can teach
+var overlay_slot_taken_by_other_style: StyleBoxFlat # If cell has another prof's scheduled class
+
+var is_displaying_overlay_mode: bool = false # To track if currently in overlay display mode
+
 # --- Initialization ---
 func _ready():
 	if not is_instance_valid(content_label):
@@ -61,6 +70,25 @@ func _ready():
 	if border_ref_color is Color: drag_over_stylebox.border_color = border_ref_color
 	
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	
+	# Initialize overlay styles
+	overlay_prof_busy_style = StyleBoxFlat.new()
+	overlay_prof_busy_style.bg_color = Color(1.0, 0.6, 0.6, 0.4) # Light Red tint
+	overlay_prof_busy_style.border_width_bottom = 1; overlay_prof_busy_style.border_color = Color.DARK_RED
+
+	overlay_prof_available_style = StyleBoxFlat.new()
+	overlay_prof_available_style.bg_color = Color(0.6, 1.0, 0.6, 0.3) # Light Green tint
+	overlay_prof_available_style.border_width_bottom = 1; overlay_prof_available_style.border_color = Color.DARK_GREEN
+	
+	overlay_prof_valid_target_style = StyleBoxFlat.new()
+	overlay_prof_valid_target_style.bg_color = Color(0.5, 0.9, 1.0, 0.5) # Light Blue / Special Highlight
+	overlay_prof_valid_target_style.border_width_left = 2
+	overlay_prof_valid_target_style.border_width_right = 2
+	overlay_prof_valid_target_style.border_color = Color.ROYAL_BLUE
+
+	overlay_slot_taken_by_other_style = StyleBoxFlat.new()
+	overlay_slot_taken_by_other_style.bg_color = Color(0.8, 0.8, 0.8, 0.3) # Greyish if taken by other scheduled class
+	overlay_slot_taken_by_other_style.border_width_bottom = 1; overlay_slot_taken_by_other_style.border_color = Color.GRAY
 
 # --- Public Setup Function ---
 # MODIFIED to accept ProfessorManager
@@ -202,6 +230,82 @@ func _on_unschedule_button_pressed():
 	academic_manager.unschedule_class(offering_to_unschedule)
 	# UI refresh is handled by signals from AcademicManager that SchedulingUI listens to
 
+# --- NEW: Overlay Display Logic ---
+func show_availability_for_professor(p_id_being_dragged: String, acad_man_ref: AcademicManager):
+	if not is_instance_valid(acad_man_ref): return
+
+	is_displaying_overlay_mode = true
+	var style_to_apply = default_stylebox # Fallback
+
+	var offering_details_in_this_cell = {}
+	if not current_offering_id_in_cell.is_empty():
+		offering_details_in_this_cell = acad_man_ref.get_offering_details(current_offering_id_in_cell)
+
+	if not offering_details_in_this_cell.is_empty():
+		var status = offering_details_in_this_cell.get("status")
+		var instructor_id = offering_details_in_this_cell.get("instructor_id", "")
+
+		if status == "pending_professor":
+			# Check if p_id_being_dragged can teach THIS pending course
+			var can_assign = true # Assume true initially
+			# 1. Check availability for all slots of this pending course
+			var pattern_days = acad_man_ref.get_days_for_pattern(offering_details_in_this_cell.get("pattern", ""))
+			var start_slot_idx = acad_man_ref.HOURLY_TIME_SLOTS.find(offering_details_in_this_cell.get("start_time_slot", ""))
+			var duration = offering_details_in_this_cell.get("duration_slots", 1)
+
+			if start_slot_idx != -1:
+				for day_in_pattern in pattern_days:
+					for i in range(duration):
+						var slot_index_to_check = start_slot_idx + i
+						if slot_index_to_check < acad_man_ref.HOURLY_TIME_SLOTS.size():
+							var time_slot_to_check = acad_man_ref.HOURLY_TIME_SLOTS[slot_index_to_check]
+							# Pass current_offering_id_in_cell to ignore self when checking availability
+							if acad_man_ref.is_professor_teaching_another_course_at(p_id_being_dragged, day_in_pattern, time_slot_to_check, current_offering_id_in_cell):
+								can_assign = false; break
+					if not can_assign: break
+			else: can_assign = false # Invalid start slot for pending course
+
+			# 2. (Optional but good) Specialization Check
+			# if can_assign and is_instance_valid(professor_manager):
+			# 	var prof_object = professor_manager.get_professor_by_id(p_id_being_dragged)
+			# 	var course_def = acad_man_ref.university_data_ref.get_course_details(offering_details_in_this_cell.get("course_id")) # Path to your course definitions
+			# 	if is_instance_valid(prof_object) and not course_def.is_empty():
+			# 		var required_spec = course_def.get("specialization") # Assuming your course_def has this
+			# 		var prof_spec = prof_object.specialization # Assuming Professor object has this
+			# 		if required_spec != prof_spec and required_spec != Professor.Specialization.GENERAL and prof_spec != Professor.Specialization.GENERAL:
+			# 			can_assign = false
+			
+			if can_assign:
+				style_to_apply = overlay_prof_valid_target_style
+			else: # Cannot assign this prof to this specific pending course
+				style_to_apply = overlay_prof_busy_style # Or a different "cannot assign here" style
+		
+		elif status == "scheduled":
+			if instructor_id == p_id_being_dragged: # Dragging prof over their own scheduled class
+				style_to_apply = overlay_prof_available_style # Or a "this is your class" style
+			else: # Taken by another professor
+				style_to_apply = overlay_slot_taken_by_other_style
+		else: # "unscheduled" status but somehow has details (should be rare for a cell)
+			style_to_apply = overlay_prof_available_style # Treat as available if not clearly busy
+
+	else: # Cell is empty
+		if acad_man_ref.is_professor_teaching_another_course_at(p_id_being_dragged, self.day, self.time_slot, ""):
+			style_to_apply = overlay_prof_busy_style
+		else:
+			style_to_apply = overlay_prof_available_style
+			
+	add_theme_stylebox_override("panel", style_to_apply)
+
+func revert_display_from_overlay():
+	if not is_displaying_overlay_mode: return # Only revert if it was in overlay mode
+	is_displaying_overlay_mode = false
+	
+	# Call update_display to restore based on actual cell content
+	var details_to_restore = {}
+	if not current_offering_id_in_cell.is_empty() and is_instance_valid(academic_manager):
+		details_to_restore = academic_manager.get_offering_details(current_offering_id_in_cell)
+	update_display(details_to_restore)
+	
 # --- Getters for TimetableGrid Drag & Drop ---
 func get_cell_day() -> String:
 	return day
