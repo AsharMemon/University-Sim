@@ -27,6 +27,12 @@ const COLOR_FULL_BG = Color(0.95, 0.7, 0.7, 0.2)
 
 const DETAILED_LOGGING_ENABLED: bool = false # Set to true for specific cell logs
 
+var is_pending_schedule: bool = false # <<< NEW state variable
+# current_offering_id_in_cell already exists and will hold the ID of pending/scheduled course
+
+# --- Visual State Colors --- (add one for pending)
+const COLOR_PENDING_PROF_BG = Color(1.0, 0.9, 0.6, 0.2) # Yellowish for pending
+
 # --- Initialization ---
 func _ready():
 	if not is_instance_valid(content_label):
@@ -78,76 +84,83 @@ func setup_cell(p_day: String, p_time_slot: String, p_classroom_id: String, p_ac
 func update_display(offering_details: Dictionary):
 	if not is_instance_valid(content_label) or \
 	   not is_instance_valid(unschedule_button) or \
-	   not is_instance_valid(instructor_name_label): # Check new label
-		if DETAILED_LOGGING_ENABLED: print_debug("A label is missing, cannot update display fully.")
-		# Allow partial update if content_label exists
-		if not is_instance_valid(content_label): return
-	
-	var current_style: StyleBoxFlat = default_stylebox.duplicate(true) if default_stylebox is StyleBoxFlat else StyleBoxFlat.new()
-	if not default_stylebox is StyleBoxFlat: current_style.bg_color = COLOR_DEFAULT_BG # Ensure it has a base color
+	   not is_instance_valid(instructor_name_label):
+		return
 
-	current_offering_id_in_cell = ""
-	instructor_name_label.text = "" # Clear instructor name by default
+	var current_style: StyleBoxFlat = default_stylebox.duplicate(true) if default_stylebox is StyleBoxFlat else StyleBoxFlat.new()
+	if not (default_stylebox is StyleBoxFlat): current_style.bg_color = COLOR_DEFAULT_BG
+
+	current_offering_id_in_cell = "" # Reset
+	is_pending_schedule = false      # Reset
+	instructor_name_label.text = ""
+	content_label.text = ""
+	unschedule_button.visible = false
 
 	if offering_details != null and not offering_details.is_empty():
-		var course_name = offering_details.get("course_name", "N/A")
-		var course_id = offering_details.get("course_id", "N/A")
 		current_offering_id_in_cell = offering_details.get("offering_id", "")
-		
-		var enrolled_count = offering_details.get("enrolled_count", 0) # Prefer direct count if available
-		if offering_details.has("enrolled_student_ids") and offering_details.enrolled_student_ids is Array:
-			enrolled_count = offering_details.enrolled_student_ids.size()
-			
+		var course_name = offering_details.get("course_name", "N/A")
+		var course_id_short = offering_details.get("course_id", "N/A").right(5)
+		var enrolled_count = offering_details.get("enrolled_count", 0)
 		var max_cap = offering_details.get("max_capacity", 0)
-
-		var is_start_slot = false
-		if is_instance_valid(academic_manager) and not current_offering_id_in_cell.is_empty():
-			var main_schedule_info = academic_manager.scheduled_class_details.get(current_offering_id_in_cell)
-			if main_schedule_info and main_schedule_info.start_time_slot == self.time_slot:
-				var pattern = main_schedule_info.get("pattern", "")
-				if (pattern == "MWF" and (self.day in ["Mon", "Wed", "Fri"])) or \
-				   (pattern == "TR" and (self.day in ["Tue", "Thu"])):
-					is_start_slot = true
-		
-		var display_text = ""
-		if is_start_slot:
-			display_text = "%s (%s)\n%d/%d" % [course_name, course_id.right(5), enrolled_count, max_cap] # Shorten course_id if long
-			unschedule_button.visible = true
-		else:
-			display_text = "(%s)\n%d/%d" % [course_id.right(5), enrolled_count, max_cap]
-			unschedule_button.visible = false
-		
-		content_label.text = display_text
-		
-		# <<< NEW: Display Instructor Name >>>
+		var status = offering_details.get("status", "unknown")
 		var instructor_id = offering_details.get("instructor_id", "")
-		if not instructor_id.is_empty() and is_instance_valid(professor_manager):
-			var prof: Professor = professor_manager.get_professor_by_id(instructor_id)
-			if is_instance_valid(prof):
-				# Displaying initials or a short form of the name: "LName, F."
-				var name_parts = prof.professor_name.split(" ")
-				if name_parts.size() > 1:
-					instructor_name_label.text = name_parts[-1] + ", " + name_parts[0].left(1) + "."
-				else:
-					instructor_name_label.text = prof.professor_name # Full name if only one part
-			else:
-				instructor_name_label.text = "Prof. ID N/A" # Instructor ID was there but no prof found
-		elif not instructor_id.is_empty():
-			instructor_name_label.text = "Prof. System N/A" # ID was there but no prof manager
-		else:
-			instructor_name_label.text = "TBA" # To Be Announced / Unassigned
-		
-		# Set background color based on status
-		if max_cap > 0 and enrolled_count >= max_cap:
-			current_style.bg_color = COLOR_FULL_BG
-		else:
+
+		# Determine if this cell is the "primary" display cell for a multi-slot course
+		var is_primary_display_slot = false
+		var offering_pattern = offering_details.get("pattern", "")
+		var offering_start_time = offering_details.get("start_time_slot", "")
+		# This offering's main definition is at its start_time_slot on days defined by its pattern
+		# This cell is a "primary" display if its time_slot matches the offering's start_time_slot
+		# AND this cell's day is part of the offering's pattern.
+		# A more robust check: get all (day,slot) occupied by this offering_id from AM.
+		# If this cell's (day,slot) is the 'first' one (e.g. Mon 8am for MWF 8am), then it's primary.
+		# For simplicity here, we'll assume if AM placed it here, it's relevant.
+		# The unschedule button should ideally only appear on the "main" slot of the course.
+		# Let's make it visible if the current cell's time slot is the start_time_slot of the course.
+		if self.time_slot == offering_start_time:
+			is_primary_display_slot = true
+
+
+		if status == "scheduled":
+			is_pending_schedule = false
+			content_label.text = "%s (%s)\n%d/%d" % [course_name, course_id_short, enrolled_count, max_cap]
+			unschedule_button.visible = is_primary_display_slot # Show on primary slot
+			
+			if not instructor_id.is_empty() and is_instance_valid(professor_manager):
+				var prof: Professor = professor_manager.get_professor_by_id(instructor_id)
+				if is_instance_valid(prof):
+					var name_parts = prof.professor_name.split(" ")
+					instructor_name_label.text = name_parts[-1] + ", " + name_parts[0].left(1) + "." if name_parts.size() > 1 else prof.professor_name
+				else: instructor_name_label.text = "Prof. N/A"
+			elif not instructor_id.is_empty(): instructor_name_label.text = "Prof. Sys N/A"
+			else: instructor_name_label.text = "Error: Sched, No Prof!?" # Should not happen
+
 			current_style.bg_color = COLOR_SCHEDULED_BG
+			if max_cap > 0 and enrolled_count >= max_cap: current_style.bg_color = COLOR_FULL_BG
+
+		elif status == "pending_professor":
+			is_pending_schedule = true # Mark this cell as having a pending course
+			content_label.text = "%s (%s)\n%d/%d" % [course_name, course_id_short, enrolled_count, max_cap]
+			instructor_name_label.text = "PENDING PROF"
+			instructor_name_label.modulate = Color.DARK_ORANGE # Make it stand out
+			unschedule_button.visible = is_primary_display_slot # Show on primary slot
+			current_style.bg_color = COLOR_PENDING_PROF_BG
+		
+		else: # Unscheduled or other status, effectively empty for this cell
+			content_label.text = ""
+			instructor_name_label.text = ""
+			is_pending_schedule = false
+			current_style.bg_color = COLOR_DEFAULT_BG
+			unschedule_button.visible = false
+			current_offering_id_in_cell = "" # Ensure it's cleared if not truly occupied by this cell
 	else:
 		content_label.text = ""
-		instructor_name_label.text = "" # Clear instructor if no offering
-		unschedule_button.visible = false
+		instructor_name_label.text = ""
+		is_pending_schedule = false
 		current_style.bg_color = COLOR_DEFAULT_BG
-			
+		unschedule_button.visible = false
+		current_offering_id_in_cell = ""
+
 	add_theme_stylebox_override("panel", current_style)
 
 

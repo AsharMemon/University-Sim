@@ -1,0 +1,21 @@
+[gd_scene load_steps=2 format=3 uid="uid://cbs4qbtqq8k6s"]
+
+[ext_resource type="Script" uid="uid://daa81uxv2pjpo" path="res://scenes/ProfessorListEntry.gd" id="1_8ikty"]
+
+[node name="ProfessorListEntry" type="PanelContainer"]
+offset_right = 40.0
+offset_bottom = 40.0
+scale = Vector2(4.12, 0.985221)
+script = ExtResource("1_8ikty")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+
+[node name="ProfessorNameLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="SpecializationLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2

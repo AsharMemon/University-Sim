@@ -215,23 +215,43 @@ func _spawn_and_process_new_students(count: int, academic_calendar_year: int):
 
 	print_debug("Finished spawning batch of %d new students." % count)
 
-# Called when a Student node emits its data before being freed (or hidden)
+# Called when a Student node emits its data before being (typically) hidden/disabled
 func _on_student_node_data_update_requested(data_from_student: Dictionary):
 	var s_id = data_from_student.get("student_id")
-	if s_id and all_students_data.has(s_id):
+	if s_id == null: # Check for null s_id
+		printerr("StudentManager: Received student data update request with null student_id.")
+		return
+
+	if all_students_data.has(s_id):
 		# Merge/Update the persistent record with the latest data from the node
-		# The `data_from_student` should be the comprehensive packet from `Student.get_info_summary()`
-		# plus other critical fields like `degree_progression_summary`.
 		all_students_data[s_id] = data_from_student.duplicate(true) # Store a copy
 		
-		# If the student node is being queue_free'd by AcademicManager, remove from active cache
-		if active_student_nodes_cache.has(s_id):
-			active_student_nodes_cache.erase(s_id)
-			
+		# IMPORTANT CHANGE: Do NOT remove from active_student_nodes_cache if the student node
+		# is just being disabled for in-building simulation and will be re-used.
+		# Only remove it from the cache if StudentManager is explicitly freeing the node
+		# (e.g., in a new `remove_student_and_free_node` function for graduation).
+		# if active_student_nodes_cache.has(s_id):
+		# 	 active_student_nodes_cache.erase(s_id) # KEEP THIS COMMENTED OUT for re-use strategy
+
 		emit_signal("student_record_updated", s_id)
-		if DETAILED_LOGGING_ENABLED: print_debug("Updated persistent data record for student %s." % s_id)
+		if DETAILED_LOGGING_ENABLED: print_debug("Updated persistent data record for student %s. Node remains cached if active/disabled." % s_id)
 	elif DETAILED_LOGGING_ENABLED:
-		print_debug("Received despawn data for unknown or already removed student ID: %s." % str(s_id))
+		# This case might occur if a student is being removed entirely (e.g. graduated) and their persistent record was already handled.
+		print_debug("StudentManager: Received despawn data for student ID %s, but no persistent record found in all_students_data. This might be normal if student was fully removed." % str(s_id))
+
+# You would then have a separate function, perhaps called by AcademicManager upon graduation:
+func fully_remove_student(student_id: String):
+	if active_student_nodes_cache.has(student_id):
+		var node_to_free = active_student_nodes_cache[student_id]
+		if is_instance_valid(node_to_free):
+			node_to_free.queue_free() # Actually free the node
+		active_student_nodes_cache.erase(student_id) # Now remove from cache
+
+	if all_students_data.has(student_id):
+		all_students_data.erase(student_id)
+		emit_signal("student_population_changed", get_total_student_count())
+	
+	if DETAILED_LOGGING_ENABLED: print_debug("Fully removed student (node and data) for ID: %s" % student_id)
 
 # StudentManager.gd
 func get_all_student_info_for_ui() -> Array[Dictionary]:

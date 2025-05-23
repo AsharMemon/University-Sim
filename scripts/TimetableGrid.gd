@@ -132,34 +132,55 @@ func _display_scheduled_classes():
 		print_debug("--- _display_scheduled_classes for Classroom: %s --- Finished." % classroom_id)
 
 func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
-	if DETAILED_LOGGING_ENABLED: print_debug("_can_drop_data CALLED. Data type")
-	var can_drop_flag = false
-	var current_cell_under_mouse: Control = _get_cell_at_position(at_position) # Should return TimeSlotCell
+	if not (data is Dictionary): return false # Basic check
 
-	if DETAILED_LOGGING_ENABLED: print_debug("Cell under mouse for can_drop_data: %s" % (current_cell_under_mouse.name if current_cell_under_mouse else "None"))
-
-	if data is Dictionary and data.get("type") == "course_offering":
-		if is_instance_valid(current_cell_under_mouse) and current_cell_under_mouse.has_method("set_drag_over_feedback"):
-			var primary_day = current_cell_under_mouse.day # Assuming cell has 'day' property
-			var time_slot = current_cell_under_mouse.time_slot # Assuming cell has 'time_slot'
-			
-			if not (primary_day == "Mon" or primary_day == "Tue"):
-				can_drop_flag = false
-			elif is_instance_valid(academic_manager) and \
-				 academic_manager.is_slot_available(classroom_id, primary_day, time_slot):
-				can_drop_flag = true
-	
-	if is_instance_valid(last_drag_over_cell) and last_drag_over_cell != current_cell_under_mouse and \
-	   last_drag_over_cell.has_method("set_drag_over_feedback"):
-		last_drag_over_cell.set_drag_over_feedback(false)
-
-	if is_instance_valid(current_cell_under_mouse) and current_cell_under_mouse.has_method("set_drag_over_feedback"):
-		current_cell_under_mouse.set_drag_over_feedback(can_drop_flag)
-		last_drag_over_cell = current_cell_under_mouse
-	else:
+	var cell: Control = _get_cell_at_position(at_position) # Should be TimeSlotCell
+	if not is_instance_valid(cell) or not cell.has_method("get_cell_day"): # Ensure it's a valid cell
+		if is_instance_valid(last_drag_over_cell): last_drag_over_cell.set_drag_over_feedback(false)
 		last_drag_over_cell = null
+		return false
 
+	var can_drop_flag = false
+	var drag_type = data.get("type", "")
+
+	if drag_type == "course_offering":
+		var offering_id = data.get("offering_id")
+		var primary_day = cell.get_cell_day()
+		var time_slot = cell.get_cell_time_slot()
+		
+		# Check if the primary slot itself is available. AM will check pattern.
+		# More advanced: check pattern availability here for immediate feedback.
+		if is_instance_valid(academic_manager) and academic_manager.is_slot_available(classroom_id, primary_day, time_slot):
+			# Further check: is this course already scheduled or pending?
+			var offering_details = academic_manager.get_offering_details(offering_id)
+			if offering_details.get("status", "unscheduled") == "unscheduled":
+				can_drop_flag = true
+		
+	elif drag_type == "professor":
+		var professor_id = data.get("professor_id")
+		# Check if the cell contains a "pending_professor" course
+		if cell.is_pending_schedule: # is_pending_schedule is a new var in TimeSlotCell
+			var pending_offering_id = cell.current_offering_id_in_cell # Assuming this stores the ID of pending/scheduled course
+			var pending_details = academic_manager.get_offering_details(pending_offering_id)
+
+			if pending_details.get("status") == "pending_professor":
+				# Check if professor is available for the entire duration of this pending course
+				# This is a simplified check for the primary slot; AM's assign will do the full check.
+				if not academic_manager.is_professor_teaching_another_course_at(professor_id, cell.get_cell_day(), cell.get_cell_time_slot(), pending_offering_id):
+					# TODO: Add specialization check here for better feedback if desired
+					can_drop_flag = true
+	
+	# Manage drag over feedback (as before)
+	if is_instance_valid(last_drag_over_cell) and last_drag_over_cell != cell:
+		if last_drag_over_cell.has_method("set_drag_over_feedback"):
+			last_drag_over_cell.set_drag_over_feedback(false)
+	
+	if cell.has_method("set_drag_over_feedback"):
+		cell.set_drag_over_feedback(can_drop_flag)
+	last_drag_over_cell = cell
+	
 	return can_drop_flag
+
 
 func _drop_data(at_position: Vector2, data: Variant):
 	var cell: Control = _get_cell_at_position(at_position) # Should be TimeSlotCell
@@ -168,43 +189,47 @@ func _drop_data(at_position: Vector2, data: Variant):
 		last_drag_over_cell.set_drag_over_feedback(false)
 		last_drag_over_cell = null
 
-	if data is Dictionary and data.get("type") == "course_offering":
-		if is_instance_valid(cell) and cell.has_method("get_cell_day") and cell.has_method("get_cell_time_slot"): # Assuming TimeSlotCell has these getters
-			var primary_day = cell.get_cell_day()
-			var time_slot = cell.get_cell_time_slot()
-			var offering_id = data.get("offering_id")
+	if not (data is Dictionary and is_instance_valid(cell) and cell.has_method("get_cell_day")):
+		return
 
-			if not (primary_day == "Mon" or primary_day == "Tue"):
-				print_debug("Invalid drop day. Can only initiate schedule on Mon or Tue. Attempted: ", primary_day)
-				return
+	var drag_type = data.get("type", "")
 
-			# --- Get selected instructor from parent SchedulingUI ---
-			var selected_instructor_id: String = ""
-			var scheduling_ui_node = _get_scheduling_ui_ancestor() # Helper to find the SchedulingUI panel
-
-			if is_instance_valid(scheduling_ui_node) and scheduling_ui_node.has_method("get_selected_instructor_id_for_scheduling"):
-				selected_instructor_id = scheduling_ui_node.get_selected_instructor_id_for_scheduling()
-				if DETAILED_LOGGING_ENABLED: print_debug("Instructor selected via dropdown: %s" % (selected_instructor_id if not selected_instructor_id.is_empty() else "Unassigned"))
+	if drag_type == "course_offering":
+		var primary_day = cell.get_cell_day()
+		var time_slot = cell.get_cell_time_slot()
+		var offering_id = data.get("offering_id")
+		
+		if DETAILED_LOGGING_ENABLED: print_debug("Attempting to drop COURSE '%s' on %s at %s in classroom %s" % [offering_id, primary_day, time_slot, classroom_id])
+		
+		if is_instance_valid(academic_manager):
+			var success = academic_manager.place_course_in_slot_pending(offering_id, classroom_id, primary_day, time_slot)
+			if success:
+				if DETAILED_LOGGING_ENABLED: print_debug("Successfully initiated PENDING scheduling for %s." % offering_id)
 			else:
-				if DETAILED_LOGGING_ENABLED: print_debug("Could not get selected instructor from parent SchedulingUI. Scheduling as Unassigned.")
-			
-			if DETAILED_LOGGING_ENABLED: print_debug("Attempting to drop '%s' (ID: %s) on %s at %s in classroom %s with instructor: %s" % [data.get("course_name","N/A"), offering_id, primary_day, time_slot, classroom_id, selected_instructor_id])
-			
-			if is_instance_valid(academic_manager):
-				var success = academic_manager.schedule_class(
-					offering_id,
-					classroom_id,
-					primary_day,
-					time_slot,
-					selected_instructor_id # <<< PASS INSTRUCTOR ID
-				)
-				if success:
-					if DETAILED_LOGGING_ENABLED: print_debug("Successfully initiated scheduling via drop.")
-					# AcademicManager will emit "schedules_updated", which SchedulingUI listens to for refresh.
-				else:
-					if DETAILED_LOGGING_ENABLED: print_debug("Failed to schedule via drop (pattern slot unavailable or other issue).")
+				if DETAILED_LOGGING_ENABLED: print_debug("Failed to place course %s in pending state." % offering_id)
+				# Optionally show a user message here (e.g., "Slots conflict or invalid pattern.")
+
+	elif drag_type == "professor":
+		var professor_id = data.get("professor_id")
+		# Ensure the cell has a pending course
+		if cell.is_pending_schedule: # is_pending_schedule is a new var in TimeSlotCell
+			var pending_offering_id = cell.current_offering_id_in_cell # Get ID from cell
+			var offering_details = academic_manager.get_offering_details(pending_offering_id)
+
+			if offering_details.get("status") == "pending_professor":
+				if DETAILED_LOGGING_ENABLED: print_debug("Attempting to assign PROFESSOR '%s' to PENDING offering '%s' in cell %s %s" % [professor_id, pending_offering_id, cell.get_cell_day(), cell.get_cell_time_slot()])
+				
+				if is_instance_valid(academic_manager):
+					var success = academic_manager.assign_instructor_to_pending_course(pending_offering_id, professor_id)
+					if success:
+						if DETAILED_LOGGING_ENABLED: print_debug("Successfully assigned Professor %s to %s." % [professor_id, pending_offering_id])
+					else:
+						if DETAILED_LOGGING_ENABLED: print_debug("Failed to assign Professor %s to %s (availability/specialization issue)." % [professor_id, pending_offering_id])
+						# Optionally show a user message
+			else:
+				if DETAILED_LOGGING_ENABLED: print_debug("Drop of professor on cell, but course %s is not pending. Status: %s" % [pending_offering_id, offering_details.get("status")])
 		else:
-			if DETAILED_LOGGING_ENABLED: print_debug("Drop occurred outside a valid cell or cell is not a TimeSlotCell.")
+			if DETAILED_LOGGING_ENABLED: print_debug("Professor dropped on cell that does not have a pending course.")
 
 # Helper to find the SchedulingUI panel ancestor
 func _get_scheduling_ui_ancestor() -> Node:
@@ -248,6 +273,9 @@ func _get_cell_at_position(p_pos_local_to_timetable_grid: Vector2) -> Control:
 	if DETAILED_LOGGING_ENABLED: print_debug("Mouse is NOT over any valid cell in this grid.")
 	return null
 
+func set_scheduling_ui_parent(ui_parent: SchedulingPanel): # Called by SchedulingUI
+	self.scheduling_ui_parent = ui_parent
+	
 func print_debug(message_parts): # Copied from your script
 	if not DETAILED_LOGGING_ENABLED: return
 	var final_message = "[TimetableGrid C:%s]: " % classroom_id.right(4) if not classroom_id.is_empty() else "[TimetableGrid]: "

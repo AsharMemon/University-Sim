@@ -152,50 +152,31 @@ func fire_professor(professor_id: String):
 func assign_professor_to_course(professor_id: String, offering_id: String) -> bool:
 	var prof: Professor = get_professor_by_id(professor_id)
 	if not is_instance_valid(prof):
-		printerr("Cannot assign: Professor %s not found." % professor_id)
+		printerr("ProfManager: Cannot assign: Professor %s not found." % professor_id)
 		return false
 	
-	if not is_instance_valid(academic_manager):
-		printerr("Cannot assign course: AcademicManager not available.")
-		return false
-
-	# Check if offering exists and is not already assigned (or handle multiple instructors if your system allows)
-	var offering_details = academic_manager.get_offering_details(offering_id) # Needs to be comprehensive
-	if offering_details.is_empty() or offering_details.get("status") != "scheduled":
-		printerr("Cannot assign: Offering %s not found or not scheduled." % offering_id)
-		return false
-	
-	var current_instructor_id = offering_details.get("instructor_id", "")
-	if not current_instructor_id.is_empty() and current_instructor_id != professor_id:
-		printerr("Cannot assign: Offering %s already taught by %s." % [offering_id, current_instructor_id])
-		return false # Or unassign previous first
-
-	# TODO: Check if professor is qualified (specialization matches course) and not overloaded
-
+	# AcademicManager is now the source of truth for whether the offering is assignable.
+	# This function's role is primarily to update the professor's internal list.
 	if not prof.courses_teaching_ids.has(offering_id):
 		prof.courses_teaching_ids.append(offering_id)
-		# AcademicManager needs to update its scheduled_class_details
-		if academic_manager.has_method("set_instructor_for_offering"):
-			academic_manager.set_instructor_for_offering(offering_id, professor_id)
-			emit_signal("professor_assigned_to_course", professor_id, offering_id)
-			emit_signal("faculty_list_updated") # Or a more specific signal for schedule changes
-			print_debug("Assigned Prof. %s (%s) to Offering %s" % [prof.professor_name, professor_id, offering_id])
-			return true
-		else:
-			printerr("AcademicManager missing 'set_instructor_for_offering' method.")
-			prof.courses_teaching_ids.erase(offering_id) # Rollback
-			return false
-	return true # Already assigned
+		# No need to call back to AM.set_instructor_for_offering here, as AM initiated this.
+		emit_signal("professor_assigned_to_course", professor_id, offering_id)
+		# faculty_list_updated might be too broad if only schedule display needs update,
+		# but can be kept if professor's display card (e.g. teaching load) needs refresh.
+		# emit_signal("faculty_list_updated") 
+		print_debug("ProfManager: Linked Prof. %s (%s) to Offering %s" % [prof.professor_name, professor_id, offering_id])
+		return true
+	# print_debug("ProfManager: Prof. %s already linked to Offering %s" % [professor_id, offering_id])
+	return true # Already assigned in professor's list
 
 func unassign_professor_from_course(professor_id: String, offering_id: String):
 	var prof: Professor = get_professor_by_id(professor_id)
 	if is_instance_valid(prof) and prof.courses_teaching_ids.has(offering_id):
 		prof.courses_teaching_ids.erase(offering_id)
-		if is_instance_valid(academic_manager) and academic_manager.has_method("set_instructor_for_offering"):
-			academic_manager.set_instructor_for_offering(offering_id, "") # Clear instructor
-			emit_signal("professor_unassigned_from_course", professor_id, offering_id)
-			emit_signal("faculty_list_updated")
-			print_debug("Unassigned Prof. %s from Offering %s" % [prof.professor_name, offering_id])
+		# No need to call back to AM.set_instructor_for_offering("", "")
+		emit_signal("professor_unassigned_from_course", professor_id, offering_id)
+		# emit_signal("faculty_list_updated")
+		print_debug("ProfManager: Unlinked Prof. %s from Offering %s" % [prof.professor_name, offering_id])
 		return true
 	return false
 

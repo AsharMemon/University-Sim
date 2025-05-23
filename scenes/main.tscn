@@ -123,6 +123,7 @@ text = "View Schedules"
 
 [node name="ViewFacultyButton" type="Button" parent="Panel/HBoxContainer"]
 layout_mode = 2
+text = "View Faculty"
 
 [node name="TimeManager" type="Node" parent="."]
 script = ExtResource("3_tipki")
@@ -261,13 +262,15 @@ size_flags_vertical = 0
 layout_mode = 2
 text = "Close"
 
-[node name="AcademicManager" type="Node" parent="." node_paths=PackedStringArray("university_data", "building_manager", "time_manager")]
+[node name="AcademicManager" type="Node" parent="." node_paths=PackedStringArray("university_data", "building_manager", "time_manager", "professor_manager")]
 script = ExtResource("7_o6xl0")
 university_data = NodePath("../UniversityDataNode")
 building_manager = NodePath("..")
 time_manager = NodePath("../TimeManager")
+professor_manager = NodePath("../ProfessorManager")
 
 [node name="ProgramManagementPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager", "program_list_vbox", "selected_program_name_label", "course_viz_vbox", "course_name_label", "course_id_label", "course_credits_label", "course_description_label")]
+visible = false
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
@@ -362,31 +365,34 @@ size_flags_vertical = 3
 bbcode_enabled = true
 text = "Select a course to see details."
 
-[node name="SchedulingPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager", "professor_manager")]
-visible = false
+[node name="SchedulingPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager", "professor_manager", "unscheduled_courses_list_vbox", "professor_list_vbox", "classroom_tabs")]
 custom_minimum_size = Vector2(800, 500)
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -366.0
-offset_top = -209.0
-offset_right = 429.0
-offset_bottom = 235.0
+offset_left = -441.0
+offset_top = -237.0
+offset_right = 359.0
+offset_bottom = 263.0
 grow_horizontal = 2
 grow_vertical = 2
+scale = Vector2(1.16, 1)
 script = ExtResource("9_85g3d")
 academic_manager = NodePath("../AcademicManager")
 professor_manager = NodePath("../ProfessorManager")
+unscheduled_courses_list_vbox = NodePath("MainHSplit/UnscheduledCoursesArea/UnscheduledVBox/UnscheduledScroll/UnscheduledCoursesListVBox")
+professor_list_vbox = NodePath("MainHSplit/ProfessorListArea/VBoxContainer/ProfessorListScroll/ProfessorListVBox")
+classroom_tabs = NodePath("MainHSplit/ClassroomSchedulesArea/ClassroomSchedulesVBox/ClassroomTabs")
 
-[node name="MainHSplit" type="HSplitContainer" parent="SchedulingPanel"]
+[node name="MainHSplit" type="HBoxContainer" parent="SchedulingPanel"]
 layout_mode = 2
 
 [node name="UnscheduledCoursesArea" type="PanelContainer" parent="SchedulingPanel/MainHSplit"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 0.25
+size_flags_stretch_ratio = 0.47
 
 [node name="UnscheduledVBox" type="VBoxContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea"]
 layout_mode = 2
@@ -396,16 +402,6 @@ layout_mode = 2
 text = "Unscheduled Courses"
 horizontal_alignment = 1
 
-[node name="InstructorSelectHBox" type="HBoxContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox"]
-layout_mode = 2
-
-[node name="AssignProfessorLabel" type="Label" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox/InstructorSelectHBox"]
-layout_mode = 2
-text = "Assign Professor"
-
-[node name="InstructorDropdown" type="OptionButton" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox/InstructorSelectHBox"]
-layout_mode = 2
-
 [node name="UnscheduledScroll" type="ScrollContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -413,9 +409,32 @@ size_flags_vertical = 3
 [node name="UnscheduledCoursesListVBox" type="VBoxContainer" parent="SchedulingPanel/MainHSplit/UnscheduledCoursesArea/UnscheduledVBox/UnscheduledScroll"]
 layout_mode = 2
 
+[node name="ProfessorListArea" type="PanelContainer" parent="SchedulingPanel/MainHSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.47
+
+[node name="VBoxContainer" type="VBoxContainer" parent="SchedulingPanel/MainHSplit/ProfessorListArea"]
+layout_mode = 2
+
+[node name="ProfessorLabel" type="Label" parent="SchedulingPanel/MainHSplit/ProfessorListArea/VBoxContainer"]
+layout_mode = 2
+text = "Professors"
+horizontal_alignment = 1
+
+[node name="ProfessorListScroll" type="ScrollContainer" parent="SchedulingPanel/MainHSplit/ProfessorListArea/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ProfessorListVBox" type="VBoxContainer" parent="SchedulingPanel/MainHSplit/ProfessorListArea/VBoxContainer/ProfessorListScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
 [node name="ClassroomSchedulesArea" type="PanelContainer" parent="SchedulingPanel/MainHSplit"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.54
 
 [node name="ClassroomSchedulesVBox" type="VBoxContainer" parent="SchedulingPanel/MainHSplit/ClassroomSchedulesArea"]
 layout_mode = 2
