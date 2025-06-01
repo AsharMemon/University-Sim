@@ -191,44 +191,51 @@ func get_all_unlocked_program_ids() -> Array[String]: # [cite: 1]
 			unlocked_ids_arr.append(program_id_key_str) # [cite: 1]
 	return unlocked_ids_arr # [cite: 1]
 
+# In AcademicManager.gd
+
 func _generate_course_offerings_for_program(program_id: String): # [cite: 1]
 	if not is_instance_valid(university_data): return # [cite: 1]
-	if program_states.get(program_id) != "unlocked": return # [cite: 1]
+	# Use the existing get_program_state method
+	if get_program_state(program_id) != "unlocked": return # [cite: 1] 
 
-	var required_courses_list: Array[String] = university_data.get_required_courses_for_program(program_id) # [cite: 1]
+	# --- MODIFIED LINE: Use the new function from UniversityData ---
+	var courses_to_create_offerings_for: Array[String] = university_data.get_all_course_ids_in_program_curriculum(program_id) # [cite: 1]
+	# --- END MODIFIED LINE ---
+	
+	if DETAILED_LOGGING_ENABLED: print_debug(["Generating offerings for program '%s'. Found %d courses in its curriculum." % [program_id, courses_to_create_offerings_for.size()]]) # [cite: 1]
+
 	var new_offerings_were_added = false # [cite: 1]
-	for course_id_val_str in required_courses_list: # [cite: 1]
+	for course_id_val_str in courses_to_create_offerings_for: # Iterate the new list [cite: 1]
 		var offering_already_exists_for_program = false # [cite: 1]
 		for existing_offering_id in course_offerings.keys(): # [cite: 1]
 			var existing_offering_details = course_offerings[existing_offering_id] # [cite: 1]
 			if existing_offering_details.get("course_id") == course_id_val_str and \
-				existing_offering_details.get("program_id") == program_id: # [cite: 1]
+			   existing_offering_details.get("program_id") == program_id: # [cite: 1]
 				offering_already_exists_for_program = true # [cite: 1]
 				break # [cite: 1]
 		
 		if not offering_already_exists_for_program: # [cite: 1]
 			var course_details_dict_copy = university_data.get_course_details(course_id_val_str) # [cite: 1]
 			if course_details_dict_copy.is_empty(): # [cite: 1]
-				print_debug(["Warning: Details for course '", course_id_val_str, "' not found. Cannot create offering for program '", program_id, "'."]) # [cite: 11]
+				print_debug(["Warning: Details for course '", course_id_val_str, "' not found. Cannot create offering for program '", program_id, "'."]) # [cite: 1]
 				continue # [cite: 1]
 
 			var unique_id_suffix = str(Time.get_unix_time_from_system()).right(5) + "_" + str(randi() % 10000) # [cite: 1]
 			var new_offering_id_str = "offering_%s_%s_%s" % [program_id.uri_encode(), course_id_val_str.uri_encode(), unique_id_suffix] # [cite: 1]
 			
-			# NEW: Initialize offerings with more fields for pending/scheduled state
 			course_offerings[new_offering_id_str] = {
 				"offering_id": new_offering_id_str,
 				"course_id": course_id_val_str,
 				"course_name": course_details_dict_copy.get("name", "N/A Course Name"),
 				"program_id": program_id,
-				"status": "unscheduled", # Initial status
+				"status": "unscheduled", # Initial status [cite: 1]
 				"instructor_id": "",
 				"classroom_id": "",
-				"primary_day": "", # e.g. "Mon" or "Tue", set when placed pending
+				"primary_day": "", 
 				"start_time_slot": "",
-				"pattern": "", # e.g. "MWF" or "TR", set when placed pending
-				"duration_slots": 0, # set when placed pending
-				"max_capacity": course_details_dict_copy.get("default_capacity", 30), # Default from course, overridden by classroom later
+				"pattern": "", 
+				"duration_slots": 0, 
+				"max_capacity": course_details_dict_copy.get("default_capacity", 30), 
 				"enrolled_student_ids": []
 			} # [cite: 1]
 			new_offerings_were_added = true # [cite: 1]
@@ -236,7 +243,7 @@ func _generate_course_offerings_for_program(program_id: String): # [cite: 1]
 
 	if new_offerings_were_added: # [cite: 1]
 		emit_signal("course_offerings_updated") # [cite: 1]
-
+		
 func get_unscheduled_course_offerings() -> Array[Dictionary]: # [cite: 1]
 	var unscheduled_list: Array[Dictionary] = [] # [cite: 1]
 	for offering_id_key_str in course_offerings.keys(): # [cite: 1]
@@ -642,49 +649,46 @@ func get_days_for_pattern(pattern_str: String) -> Array[String]: # [cite: 1]
 # For example, if student enrollment functions look up course capacity or schedule times,
 # they should get it from course_offerings[offering_id] if status is "pending" or "scheduled".
 
-# MODIFIED: This function will now search course_offerings
+# In AcademicManager.gd
 func find_and_enroll_student_in_offering(student_id: String, course_id_to_enroll: String) -> String:
 	var best_offering_id_to_enroll: String = ""
-	var max_available_seats_in_best_offering = -1 # Initialize to take any offering with seats
+	var max_available_seats_in_best_offering = -1 
 
 	if DETAILED_LOGGING_ENABLED: print_debug(["Finding offering for course '%s' for student '%s'." % [course_id_to_enroll, student_id]])
 
 	for offering_id_candidate in course_offerings.keys():
 		var offering_data = course_offerings[offering_id_candidate]
 
-		# Check if it's the correct course_id AND if it's on the timetable (pending or fully scheduled)
-		if offering_data.get("course_id") == course_id_to_enroll and \
-		   (offering_data.get("status") == "scheduled" or offering_data.get("status") == "pending_professor"):
+		# --- MODIFIED CONDITION ---
+		# Allow finding any offering that matches the course_id, regardless of current status,
+		# as long as it's an offering for that course. The student's decision to attend
+		# will still depend on the offering being 'scheduled'.
+		if offering_data.get("course_id") == course_id_to_enroll:
+		# --- END MODIFIED CONDITION ---
 			
 			var enrolled_students_list: Array = offering_data.get("enrolled_student_ids", [])
-			# max_capacity in course_offerings should be updated from classroom when placed/scheduled
 			var current_max_capacity = offering_data.get("max_capacity", 0) 
 			var current_available_seats = current_max_capacity - enrolled_students_list.size()
 
 			if DETAILED_LOGGING_ENABLED:
-				print_debug(["  Checking offering candidate '%s' for course '%s'. Status: '%s', Capacity: %d, Enrolled: %d, Available: %d" % \
-					[offering_id_candidate, course_id_to_enroll, offering_data.get("status"), current_max_capacity, enrolled_students_list.size(), current_available_seats]])
+				print_debug(["  Checking offering candidate '%s' (Status: '%s') for course '%s'. Capacity: %d, Enrolled: %d, Available: %d" % \
+					[offering_id_candidate, offering_data.get("status"), course_id_to_enroll, current_max_capacity, enrolled_students_list.size(), current_available_seats]])
 
 			if current_available_seats > 0:
-				# Prioritize offerings with more available seats
 				if current_available_seats > max_available_seats_in_best_offering:
 					max_available_seats_in_best_offering = current_available_seats
 					best_offering_id_to_enroll = offering_id_candidate
-				# If no "best" yet (max_available_seats_in_best_offering is still -1), take the first one with available seats
 				elif best_offering_id_to_enroll.is_empty() and max_available_seats_in_best_offering == -1 : 
 					best_offering_id_to_enroll = offering_id_candidate
 					max_available_seats_in_best_offering = current_available_seats
 		
 	if not best_offering_id_to_enroll.is_empty():
-		# enroll_student_in_offering is AM's own method, now modified below
 		var enrollment_success = enroll_student_in_offering(best_offering_id_to_enroll, student_id)
 		if enrollment_success:
-			if DETAILED_LOGGING_ENABLED: print_debug(["Student '", student_id, "' CAN BE ENROLLED in '", course_id_to_enroll, "' (Found and attempting enrollment in Offering: '", best_offering_id_to_enroll, "')."])
+			if DETAILED_LOGGING_ENABLED: print_debug(["Student '%s' CAN BE ENROLLED in '%s' (Offering: '%s')." % [student_id, course_id_to_enroll, best_offering_id_to_enroll]])
 			return best_offering_id_to_enroll
-		# else: # enroll_student_in_offering will log its own errors
-			# printerr("Student '", student_id, "' FAILED internal enrollment call for '", course_id_to_enroll, "' (Offering: '", best_offering_id_to_enroll, "').")
 	else:
-		if DETAILED_LOGGING_ENABLED: print_debug(["No available offering (scheduled or pending with capacity) found for student '", student_id, "' to enroll in course '", course_id_to_enroll, "'."])
+		if DETAILED_LOGGING_ENABLED: print_debug(["No available offering (with capacity) found for student '%s' to enroll in course '%s'." % [student_id, course_id_to_enroll]])
 	return ""
 
 # MODIFIED: This function will now use course_offerings as the source of truth
@@ -697,9 +701,16 @@ func enroll_student_in_offering(offering_id: String, student_id: String) -> bool
 	
 	# Students can be enrolled in classes that are on the timetable, even if pending a professor.
 	# They just won't attend until it's fully "scheduled".
-	if offering_data.status != "scheduled" and offering_data.status != "pending_professor":
-		printerr("AcademicManager: Offering '%s' is not in a schedulable state (must be 'scheduled' or 'pending_professor'). Current status: '%s'. Cannot enroll." % [offering_id, offering_data.status])
+	# --- RELAX STATUS CHECK FOR ENROLLMENT (Student.gd will check for 'scheduled' before attending) ---
+	# Original check:
+	# if offering_data.status != "scheduled" and offering_data.status != "pending_professor":
+	#     printerr("AcademicManager: Offering '%s' is not in a schedulable state... Cannot enroll." % [offering_id, offering_data.status])
+	#     return false
+	# New check: Ensure it's a recognized status, but allow "unscheduled" for student registration.
+	if not (offering_data.status in ["scheduled", "pending_professor", "unscheduled"]):
+		printerr("AcademicManager: Offering '%s' has an unrecognized status '%s'. Cannot enroll." % [offering_id, offering_data.status])
 		return false
+	# --- END RELAXED STATUS CHECK ---
 		
 	if not offering_data.has("enrolled_student_ids") or not offering_data.has("max_capacity"):
 		printerr("AcademicManager: Offering '", offering_id, "' has malformed details (missing enrolled_student_ids or max_capacity field). Cannot enroll student.")
@@ -1479,7 +1490,7 @@ func get_schedule_for_professor(professor_id: String) -> Array[Dictionary]:
 			# Ensure details include classroom_id, pattern, start_time_slot, duration_slots
 			prof_schedule.append(offering_details)
 	return prof_schedule
-	
+
 func print_debug(message_parts): # [cite: 1]
 	var final_message = "[AcademicManager]: " # [cite: 1]
 	if message_parts is String: # [cite: 1]
@@ -1492,3 +1503,10 @@ func print_debug(message_parts): # [cite: 1]
 	else:
 		final_message += str(message_parts) # [cite: 1]
 	print(final_message) # [cite: 1]
+
+# Temporary function in AcademicManager.gd
+func debug_get_offering_status(offering_id_to_check: String):
+	if course_offerings.has(offering_id_to_check):
+		print_debug(["DEBUG: Status for offering '%s' is: %s" % [offering_id_to_check, course_offerings[offering_id_to_check].get("status")]])
+	else:
+		print_debug(["DEBUG: Offering '%s' not found." % offering_id_to_check])

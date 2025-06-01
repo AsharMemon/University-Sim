@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ProgramResource" load_steps=7 format=3 uid="uid://uimk0vvsvq1j"]
+
+[ext_resource type="Script" uid="uid://dukc4dncbcxhn" path="res://scripts/CourseResource.gd" id="1_saxar"]
+[ext_resource type="Script" uid="uid://di5qjugq8spy1" path="res://scripts/ProgramResource.gd" id="2_f6hcc"]
+[ext_resource type="Resource" uid="uid://bqtbdk0c46non" path="res://courses/calc_one.tres" id="2_jln62"]
+[ext_resource type="Resource" uid="uid://ce7uxwae3jy0o" path="res://courses/calc_two.tres" id="3_ta3vx"]
+[ext_resource type="Resource" uid="uid://utju41a5ew4j" path="res://courses/htst101.tres" id="4_sn8gk"]
+[ext_resource type="Resource" uid="uid://c5508532j1fvq" path="res://courses/htst201.tres" id="5_ce88v"]
+
+[resource]
+script = ExtResource("2_f6hcc")
+program_id = "HTST"
+program_name = "BA History"
+credits_to_graduate = 120.0
+unlock_cost = 5000
+semesters_per_year = 2
+courses_in_program_resources = Array[ExtResource("1_saxar")]([ExtResource("2_jln62"), ExtResource("3_ta3vx"), ExtResource("4_sn8gk"), ExtResource("5_ce88v")])
+mandatory_courses_resources = Array[ExtResource("1_saxar")]([ExtResource("2_jln62"), ExtResource("3_ta3vx"), ExtResource("4_sn8gk"), ExtResource("5_ce88v")])
+metadata/_custom_type_script = "uid://di5qjugq8spy1"

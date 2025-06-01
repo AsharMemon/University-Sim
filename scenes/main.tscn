@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3 uid="uid://dfqndug24dyeb"]
+[gd_scene load_steps=27 format=3 uid="uid://dfqndug24dyeb"]
 
 [ext_resource type="Script" uid="uid://cto4gyufp4b2u" path="res://scripts/BuildingManager.gd" id="1_tefeu"]
 [ext_resource type="Script" uid="uid://1m4n12g83di3" path="res://scripts/RTS_Camera_Controller.gd" id="2_o6xl0"]
@@ -6,11 +6,19 @@
 [ext_resource type="Script" uid="uid://j40d0n6ton7h" path="res://scripts/StudentManager.gd" id="4_85g3d"]
 [ext_resource type="PackedScene" uid="uid://bjq22nhxyeo51" path="res://actors/student.tscn" id="5_choun"]
 [ext_resource type="Script" uid="uid://dnjdjrgsjbbbl" path="res://scripts/UniversityData.gd" id="6_ya4ey"]
+[ext_resource type="Script" uid="uid://dukc4dncbcxhn" path="res://scripts/CourseResource.gd" id="7_jbj1t"]
 [ext_resource type="Script" uid="uid://vfea85nn7btw" path="res://scripts/AcademicManager.gd" id="7_o6xl0"]
+[ext_resource type="Resource" uid="uid://bqtbdk0c46non" path="res://courses/calc_one.tres" id="8_muem4"]
 [ext_resource type="Script" uid="uid://pn8ver688s3a" path="res://scripts/ProgramManagementUI.gd" id="8_tipki"]
 [ext_resource type="Script" uid="uid://sfyaevvu3ttv" path="res://scripts/SchedulingPanel.gd" id="9_85g3d"]
+[ext_resource type="Resource" uid="uid://ce7uxwae3jy0o" path="res://courses/calc_two.tres" id="9_dp3eg"]
+[ext_resource type="Script" uid="uid://di5qjugq8spy1" path="res://scripts/ProgramResource.gd" id="10_0ld40"]
 [ext_resource type="Script" uid="uid://dq0eosifutc8f" path="res://scripts/ProfessorManager.gd" id="10_choun"]
+[ext_resource type="Resource" uid="uid://utju41a5ew4j" path="res://courses/htst101.tres" id="10_gqmmt"]
+[ext_resource type="Resource" uid="uid://dxkd08aeaa0rd" path="res://programs/BSc Computer Science.tres" id="11_gqmmt"]
 [ext_resource type="PackedScene" uid="uid://bo2r7t1e0vy3i" path="res://scenes/FacultyPanel.tscn" id="11_ya4ey"]
+[ext_resource type="Resource" uid="uid://c5508532j1fvq" path="res://courses/htst201.tres" id="11_yc10j"]
+[ext_resource type="Resource" uid="uid://uimk0vvsvq1j" path="res://programs/BA_history.tres" id="12_muem4"]
 
 [sub_resource type="PhysicalSkyMaterial" id="PhysicalSkyMaterial_0xm2m"]
 
@@ -221,6 +229,8 @@ time_manager_node = NodePath("../TimeManager")
 
 [node name="UniversityDataNode" type="Node" parent="."]
 script = ExtResource("6_ya4ey")
+course_resource_files = Array[ExtResource("7_jbj1t")]([ExtResource("8_muem4"), ExtResource("9_dp3eg"), ExtResource("10_gqmmt"), ExtResource("11_yc10j")])
+program_resource_files = Array[ExtResource("10_0ld40")]([ExtResource("11_gqmmt"), ExtResource("12_muem4")])
 
 [node name="StudentListPanel" type="PanelContainer" parent="."]
 visible = false
@@ -269,7 +279,7 @@ building_manager = NodePath("..")
 time_manager = NodePath("../TimeManager")
 professor_manager = NodePath("../ProfessorManager")
 
-[node name="ProgramManagementPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager", "program_list_vbox", "selected_program_name_label", "course_viz_vbox", "course_name_label", "course_id_label", "course_credits_label", "course_description_label")]
+[node name="ProgramManagementPanel" type="PanelContainer" parent="." node_paths=PackedStringArray("academic_manager", "program_list_vbox", "selected_program_name_label", "course_name_label", "course_id_label", "course_credits_label", "course_description_label")]
 visible = false
 anchors_preset = 8
 anchor_left = 0.5
@@ -287,7 +297,6 @@ script = ExtResource("8_tipki")
 academic_manager = NodePath("../AcademicManager")
 program_list_vbox = NodePath("MainMargin/MainHBox/LeftColumn/ProgramScroll/ProgramListVBox")
 selected_program_name_label = NodePath("MainMargin/MainHBox/MiddleColumn/SelectedProgramNameLabel")
-course_viz_vbox = NodePath("MainMargin/MainHBox/MiddleColumn/CourseVizScroll/CourseVizBox")
 course_name_label = NodePath("MainMargin/MainHBox/RightColumn/CourseNameLabel")
 course_id_label = NodePath("MainMargin/MainHBox/RightColumn/CourseIDLabel")
 course_credits_label = NodePath("MainMargin/MainHBox/RightColumn/CourseCreditsLabel")

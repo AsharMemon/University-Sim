@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ProgramResource" load_steps=5 format=3 uid="uid://dxkd08aeaa0rd"]
+
+[ext_resource type="Script" uid="uid://dukc4dncbcxhn" path="res://scripts/CourseResource.gd" id="1_fqeum"]
+[ext_resource type="Script" uid="uid://di5qjugq8spy1" path="res://scripts/ProgramResource.gd" id="2_64v6n"]
+[ext_resource type="Resource" uid="uid://bqtbdk0c46non" path="res://courses/calc_one.tres" id="2_rp87p"]
+[ext_resource type="Resource" uid="uid://ce7uxwae3jy0o" path="res://courses/calc_two.tres" id="3_wgpf8"]
+
+[resource]
+script = ExtResource("2_64v6n")
+program_id = "CS"
+program_name = "BSc Computer Science"
+credits_to_graduate = 120.0
+unlock_cost = 5000
+semesters_per_year = 2
+courses_in_program_resources = Array[ExtResource("1_fqeum")]([ExtResource("2_rp87p"), ExtResource("3_wgpf8")])
+mandatory_courses_resources = Array[ExtResource("1_fqeum")]([ExtResource("2_rp87p"), ExtResource("3_wgpf8")])
+metadata/_custom_type_script = "uid://di5qjugq8spy1"

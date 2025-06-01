@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CourseResource" load_steps=3 format=3 uid="uid://ce7uxwae3jy0o"]
+
+[ext_resource type="Script" uid="uid://dukc4dncbcxhn" path="res://scripts/CourseResource.gd" id="1_63ldd"]
+[ext_resource type="Resource" uid="uid://bqtbdk0c46non" path="res://courses/calc_one.tres" id="2_qn1ei"]
+
+[resource]
+script = ExtResource("1_63ldd")
+course_id = "MATH269"
+course_name = "Calculus II"
+credits = 3.0
+description = "Suffering more calculus"
+progress_needed = 100
+prerequisites = Array[ExtResource("1_63ldd")]([ExtResource("2_qn1ei")])
+default_program_year = 1
+default_program_semester = 2
+metadata/_custom_type_script = "uid://dukc4dncbcxhn"

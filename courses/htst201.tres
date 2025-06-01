@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CourseResource" load_steps=3 format=3 uid="uid://c5508532j1fvq"]
+
+[ext_resource type="Script" uid="uid://dukc4dncbcxhn" path="res://scripts/CourseResource.gd" id="1_0vpyi"]
+[ext_resource type="Resource" uid="uid://utju41a5ew4j" path="res://courses/htst101.tres" id="2_sjxhi"]
+
+[resource]
+script = ExtResource("1_0vpyi")
+course_id = "HTST201"
+course_name = "Intermediate History"
+credits = 3.0
+description = "More learning about past!"
+progress_needed = 100
+prerequisites = Array[ExtResource("1_0vpyi")]([ExtResource("2_sjxhi")])
+default_program_year = 2
+default_program_semester = 1
+metadata/_custom_type_script = "uid://dukc4dncbcxhn"

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="CourseResource" load_steps=2 format=3 uid="uid://bqtbdk0c46non"]
+
+[ext_resource type="Script" uid="uid://dukc4dncbcxhn" path="res://scripts/CourseResource.gd" id="1_o6866"]
+
+[resource]
+script = ExtResource("1_o6866")
+course_id = "MATH267"
+course_name = "Calculus I"
+credits = 3.0
+description = "A course for suffering through calculus"
+progress_needed = 100
+prerequisites = Array[ExtResource("1_o6866")]([])
+default_program_year = 1
+default_program_semester = 1
+metadata/_custom_type_script = "uid://dukc4dncbcxhn"

@@ -661,11 +661,12 @@ func _find_class_for_time(day_to_check: String, slot_to_check: String) -> String
 		var is_slot_match: bool = (class_start_slot_str == slot_to_check)
 
 		if DETAILED_LOGGING_ENABLED:
-			print_debug_student(
-				"  CHECKING OFFERING (for " + day_to_check + " " + slot_to_check + "): '" + course_name_for_log + "' (ID: " + offering_id_key + ") Status: " + current_offering_status +
-				"\n    ClassSchedule: Pattern='" + class_pattern_str + "' (Maps to: " + str(days_class_occurs_on) + "), StartSlot='" + class_start_slot_str + "'" +
-				"\n    MATCHES: DayMatch=" + str(is_day_match) + ", SlotMatch=" + str(is_slot_match)
-			)
+			print_debug_student("  Checking offering %s (ID: %s). Fresh status: %s. Stored local status: %s" % [
+			enrollment_data.get("course_name", "N/A"),
+			offering_id_key,
+			current_offering_status, # This is from fresh_offering_details
+			enrollment_data.get("status", "N/A_local") # This is from student's current_course_enrollments
+	])
 
 		if is_day_match and is_slot_match: # And status is already confirmed "scheduled" from above
 			return offering_id_key

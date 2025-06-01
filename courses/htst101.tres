@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="CourseResource" load_steps=2 format=3 uid="uid://utju41a5ew4j"]
+
+[ext_resource type="Script" uid="uid://dukc4dncbcxhn" path="res://scripts/CourseResource.gd" id="1_psile"]
+
+[resource]
+script = ExtResource("1_psile")
+course_id = "HTST101"
+course_name = "Intro to History"
+credits = 3.0
+description = "Learn about your past!"
+progress_needed = 100
+prerequisites = Array[ExtResource("1_psile")]([])
+default_program_year = 1
+default_program_semester = 1
+metadata/_custom_type_script = "uid://dukc4dncbcxhn"
