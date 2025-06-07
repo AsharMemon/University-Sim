@@ -80,7 +80,9 @@ func _load_data_from_resources():
 			"progress_needed": course_res.progress_needed,
 			"prerequisites": prereq_ids_array,
 			"default_program_year": course_res.default_program_year,
-			"default_program_semester": course_res.default_program_semester
+			"default_program_semester": course_res.default_program_semester,
+			"course_level": course_res.course_level # Stores the enum value (int)
+
 		}
 		print_debug("    Course '%s' loaded into COURSES dictionary with %d prerequisites. Default Year: %d, Sem: %d" % [course_res.course_id, prereq_ids_array.size(), course_res.default_program_year, course_res.default_program_semester])
 
@@ -135,7 +137,10 @@ func _load_data_from_resources():
 
 		PROGRAMS[program_res.program_id] = {
 			"name": program_res.program_name, "credits_to_graduate": program_res.credits_to_graduate,
-			"unlock_cost": program_res.unlock_cost, "semesters_per_year": program_res.semesters_per_year
+			"unlock_cost": program_res.unlock_cost, "semesters_per_year": program_res.semesters_per_year,
+			"level": program_res.level, # Stores the enum value (int)
+			"typical_duration_years": program_res.typical_duration_years,
+			"requires_thesis_or_dissertation": program_res.requires_thesis_or_dissertation
 		}
 
 		var curriculum_for_program: Dictionary = {}

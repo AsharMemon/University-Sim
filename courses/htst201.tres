@@ -7,6 +7,7 @@
 script = ExtResource("1_0vpyi")
 course_id = "HTST201"
 course_name = "Intermediate History"
+course_level = 1
 credits = 3.0
 description = "More learning about past!"
 progress_needed = 100

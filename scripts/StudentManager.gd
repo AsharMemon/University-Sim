@@ -262,36 +262,42 @@ func get_all_student_info_for_ui() -> Array[Dictionary]:
 			print_debug("First few records in all_students_data: " + str(all_students_data))
 
 
-	for student_id in all_students_data: # Iterates through keys of the dictionary
-		var student_data_record: Dictionary = all_students_data[student_id] # Get the data dictionary
+	for student_id in all_students_data:
+		var student_data_record: Dictionary = all_students_data[student_id]
 		
 		if not student_data_record is Dictionary or student_data_record.is_empty():
-			if DETAILED_LOGGING_ENABLED: print_debug("get_all_student_info_for_ui: Skipping empty or invalid record for student_id: " + str(student_id))
+			# ... (existing error print) ...
 			continue
 
-		# Construct the summary dictionary expected by StudentListItem
-		var program_name_str = student_data_record.get("program_name", "N/A_Prog") # Check if program_name is already in the record
+		var program_name_str = student_data_record.get("program_name", "N/A_Prog")
 		var prog_id = student_data_record.get("current_program_id", student_data_record.get("program_id"))
 
 		if program_name_str == "N/A_Prog" and is_instance_valid(university_data_node) and prog_id and not str(prog_id).is_empty():
 			var prog_details = university_data_node.get_program_details(str(prog_id))
 			program_name_str = prog_details.get("name", "Unknown Program")
 
-		var course_names_list: Array[String] = student_data_record.get("current_courses_list", [])
-		# If current_courses_list is not directly in student_data_record, you might need to build it
-		# from student_data_record.get("current_course_enrollments", {}) as done previously.
-		# For simplicity, assuming current_courses_list is directly available or accurately prepared
-		# when the record in all_students_data is created/updated.
+		# --- MODIFIED SECTION TO FIX TYPE MISMATCH ---
+		var course_names_list: Array[String] = []
+		var raw_courses_list_from_record: Array = student_data_record.get("current_courses_list", []) # Default to empty generic array
+		
+		if raw_courses_list_from_record != null: # Ensure it's not null
+			for item in raw_courses_list_from_record:
+				if item is String:
+					course_names_list.append(item)
+				elif item != null: # If it's not a string but also not null, convert it
+					course_names_list.append(str(item))
+					if DETAILED_LOGGING_ENABLED:
+						print_debug("Converted non-string item to string for course_names_list: " + str(item))
+		# --- END MODIFIED SECTION ---
 
 		var student_status = student_data_record.get("status", "Enrolled")
 		var credits_e = 0.0
 		var credits_n = 0.0
 		
-		# Use the 'degree_progression_summary' nested dictionary
 		var deg_prog_summary = student_data_record.get("degree_progression_summary", {})
 		if not deg_prog_summary.is_empty():
 			credits_e = deg_prog_summary.get("total_credits_earned", 0.0)
-			var actual_program_id_for_credits = deg_prog_summary.get("program_id", prog_id) # Use program_id from degree summary if available
+			var actual_program_id_for_credits = deg_prog_summary.get("program_id", prog_id)
 			if is_instance_valid(university_data_node) and actual_program_id_for_credits and not str(actual_program_id_for_credits).is_empty():
 				var pd = university_data_node.get_program_details(str(actual_program_id_for_credits))
 				credits_n = pd.get("credits_to_graduate", 0.0)
@@ -301,7 +307,7 @@ func get_all_student_info_for_ui() -> Array[Dictionary]:
 		var ui_summary_entry = {
 			"name": student_data_record.get("student_name", student_data_record.get("name", "N/A Name")),
 			"program_name": program_name_str,
-			"current_courses_list": course_names_list,
+			"current_courses_list": course_names_list, # Now correctly Array[String]
 			"status": student_status,
 			"credits_earned": credits_e,
 			"credits_needed_for_program": credits_n,
