@@ -1,9 +1,10 @@
-[gd_scene load_steps=27 format=3 uid="uid://dfqndug24dyeb"]
+[gd_scene load_steps=29 format=3 uid="uid://dfqndug24dyeb"]
 
 [ext_resource type="Script" uid="uid://cto4gyufp4b2u" path="res://scripts/BuildingManager.gd" id="1_tefeu"]
 [ext_resource type="Script" uid="uid://1m4n12g83di3" path="res://scripts/RTS_Camera_Controller.gd" id="2_o6xl0"]
 [ext_resource type="Script" uid="uid://b3ydeked4f8di" path="res://scripts/TimeManager.gd" id="3_tipki"]
 [ext_resource type="Script" uid="uid://j40d0n6ton7h" path="res://scripts/StudentManager.gd" id="4_85g3d"]
+[ext_resource type="PackedScene" uid="uid://dvx4sngs8xyoo" path="res://scenes/FinancialsUI.tscn" id="4_yc10j"]
 [ext_resource type="PackedScene" uid="uid://bjq22nhxyeo51" path="res://actors/student.tscn" id="5_choun"]
 [ext_resource type="Script" uid="uid://dnjdjrgsjbbbl" path="res://scripts/UniversityData.gd" id="6_ya4ey"]
 [ext_resource type="Script" uid="uid://dukc4dncbcxhn" path="res://scripts/CourseResource.gd" id="7_jbj1t"]
@@ -19,6 +20,7 @@
 [ext_resource type="PackedScene" uid="uid://bo2r7t1e0vy3i" path="res://scenes/FacultyPanel.tscn" id="11_ya4ey"]
 [ext_resource type="Resource" uid="uid://c5508532j1fvq" path="res://courses/htst201.tres" id="11_yc10j"]
 [ext_resource type="Resource" uid="uid://uimk0vvsvq1j" path="res://programs/BA_history.tres" id="12_muem4"]
+[ext_resource type="Script" uid="uid://cpwfd2o2ykke0" path="res://scripts/FinanceManager.gd" id="20_gqmmt"]
 
 [sub_resource type="PhysicalSkyMaterial" id="PhysicalSkyMaterial_0xm2m"]
 
@@ -204,6 +206,10 @@ layout_mode = 2
 
 [node name="TimeDisplayLabel" type="Label" parent="TopUI/HBoxContainer"]
 layout_mode = 2
+
+[node name="FinancialsUI" parent="TopUI" node_paths=PackedStringArray("finance_manager") instance=ExtResource("4_yc10j")]
+layout_mode = 0
+finance_manager = NodePath("../../FinanceManager")
 
 [node name="Students" type="Node3D" parent="."]
 
@@ -471,6 +477,12 @@ professor_manager = NodePath("../ProfessorManager")
 academic_manager = NodePath("../AcademicManager")
 
 [node name="FacultyActors" type="Node3D" parent="."]
+
+[node name="FinanceManager" type="Node" parent="." node_paths=PackedStringArray("time_manager", "student_manager", "faculty_manager")]
+script = ExtResource("20_gqmmt")
+time_manager = NodePath("../TimeManager")
+student_manager = NodePath("../StudentManager")
+faculty_manager = NodePath("../ProfessorManager")
 
 [connection signal="pressed" from="Panel/HBoxContainer/BuildDorm" to="." method="_on_select_dorm_pressed"]
 [connection signal="pressed" from="Panel/HBoxContainer/BuildClassroom" to="." method="_on_select_class_pressed"]

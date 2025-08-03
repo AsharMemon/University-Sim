@@ -1,0 +1,42 @@
+[gd_scene load_steps=2 format=3 uid="uid://dvx4sngs8xyoo"]
+
+[ext_resource type="Script" uid="uid://cqmueur41nmow" path="res://scenes/FinancialsUI.gd" id="1_8tldv"]
+
+[node name="FinancialsUI" type="HBoxContainer"]
+script = ExtResource("1_8tldv")
+
+[node name="PanelContainer" type="PanelContainer" parent="."]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="PanelContainer"]
+layout_mode = 2
+
+[node name="Balance" type="Label" parent="PanelContainer/HBoxContainer"]
+layout_mode = 2
+text = "Balance: "
+
+[node name="BalanceValueLabel" type="Label" parent="PanelContainer/HBoxContainer"]
+layout_mode = 2
+text = "$250,000"
+
+[node name="VSeparator" type="VSeparator" parent="PanelContainer/HBoxContainer"]
+layout_mode = 2
+
+[node name="LastTermIncomeLabel" type="Label" parent="PanelContainer/HBoxContainer"]
+layout_mode = 2
+text = "Last Term Income: "
+
+[node name="IncomeValueLabel" type="Label" parent="PanelContainer/HBoxContainer"]
+layout_mode = 2
+text = "$0"
+
+[node name="VSeparator2" type="VSeparator" parent="PanelContainer/HBoxContainer"]
+layout_mode = 2
+
+[node name="LastTermExpensesLabel" type="Label" parent="PanelContainer/HBoxContainer"]
+layout_mode = 2
+text = "Last Term Expenses: "
+
+[node name="ExpensesValueLabel" type="Label" parent="PanelContainer/HBoxContainer"]
+layout_mode = 2
+text = "$0"
