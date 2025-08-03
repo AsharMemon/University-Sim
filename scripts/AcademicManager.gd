@@ -193,73 +193,56 @@ func get_all_unlocked_program_ids() -> Array[String]: # [cite: 1]
 
 # In AcademicManager.gd
 
-func _generate_course_offerings_for_program(program_id: String):
-	if not is_instance_valid(university_data): 
-		printerr("AM: UniversityData invalid in _generate_course_offerings_for_program.")
-		return
-	if get_program_state(program_id) != "unlocked": 
-		if DETAILED_LOGGING_ENABLED: print_debug(["AM: Program '%s' is not unlocked. Skipping offering generation." % program_id])
-		return
+func _generate_course_offerings_for_program(program_id: String): # [cite: 1]
+	if not is_instance_valid(university_data): return # [cite: 1]
+	# Use the existing get_program_state method
+	if get_program_state(program_id) != "unlocked": return # [cite: 1] 
 
-	var courses_in_program_curriculum: Array[String] = university_data.get_all_course_ids_in_program_curriculum(program_id)
+	# --- MODIFIED LINE: Use the new function from UniversityData ---
+	var courses_to_create_offerings_for: Array[String] = university_data.get_all_course_ids_in_program_curriculum(program_id) # [cite: 1]
+	# --- END MODIFIED LINE ---
 	
-	if DETAILED_LOGGING_ENABLED: 
-		print_debug(["AM: Generating offerings for newly unlocked program '%s'. It has %d courses in its curriculum structure: %s" % [program_id, courses_in_program_curriculum.size(), str(courses_in_program_curriculum)]])
+	if DETAILED_LOGGING_ENABLED: print_debug(["Generating offerings for program '%s'. Found %d courses in its curriculum." % [program_id, courses_to_create_offerings_for.size()]]) # [cite: 1]
 
-	var new_offerings_were_added_this_call = false
-	for course_id_to_offer in courses_in_program_curriculum:
-		# --- NEW LOGIC: Check if an offering for this COURSE_ID already exists globally ---
-		var existing_offering_for_this_course_id: String = ""
-		for existing_id in course_offerings: # Iterate through keys of course_offerings
-			var existing_details = course_offerings[existing_id]
-			if existing_details.get("course_id") == course_id_to_offer:
-				existing_offering_for_this_course_id = existing_id
-				break 
+	var new_offerings_were_added = false # [cite: 1]
+	for course_id_val_str in courses_to_create_offerings_for: # Iterate the new list [cite: 1]
+		var offering_already_exists_for_program = false # [cite: 1]
+		for existing_offering_id in course_offerings.keys(): # [cite: 1]
+			var existing_offering_details = course_offerings[existing_offering_id] # [cite: 1]
+			if existing_offering_details.get("course_id") == course_id_val_str and \
+			   existing_offering_details.get("program_id") == program_id: # [cite: 1]
+				offering_already_exists_for_program = true # [cite: 1]
+				break # [cite: 1]
 		
-		if not existing_offering_for_this_course_id.is_empty():
-			if DETAILED_LOGGING_ENABLED: 
-				print_debug(["  AM: Offering for course_id '%s' already exists (ID: %s). Not creating a duplicate for program '%s'." % [course_id_to_offer, existing_offering_for_this_course_id, program_id]])
-			# Optional: You could add program_id to a list of 'associated_programs' on the existing offering if needed.
-			# For now, we assume the existing offering is shareable.
-			continue # Move to the next course in this program's curriculum
-		
-		# --- No existing global offering for this course_id, so create a NEW one ---
-		var course_definition = university_data.get_course_details(course_id_to_offer)
-		if course_definition.is_empty():
-			printerr("AM: Warning - Details for course '%s' not found in UniversityData. Cannot create offering for program '%s'." % [course_id_to_offer, program_id])
-			continue
+		if not offering_already_exists_for_program: # [cite: 1]
+			var course_details_dict_copy = university_data.get_course_details(course_id_val_str) # [cite: 1]
+			if course_details_dict_copy.is_empty(): # [cite: 1]
+				print_debug(["Warning: Details for course '", course_id_val_str, "' not found. Cannot create offering for program '", program_id, "'."]) # [cite: 1]
+				continue # [cite: 1]
 
-		# The new_offering_id still needs to be unique.
-		# We can use the program_id that *first triggered* its creation as part of the ID,
-		# or make the suffix more universally unique.
-		var unique_id_suffix = str(Time.get_unix_time_from_system()).right(5) + "_" + str(randi() % 10000)
-		var new_offering_id_str = "offering_%s_%s" % [course_id_to_offer.uri_encode(), unique_id_suffix] # Made ID more course-centric
+			var unique_id_suffix = str(Time.get_unix_time_from_system()).right(5) + "_" + str(randi() % 10000) # [cite: 1]
+			var new_offering_id_str = "offering_%s_%s_%s" % [program_id.uri_encode(), course_id_val_str.uri_encode(), unique_id_suffix] # [cite: 1]
+			
+			course_offerings[new_offering_id_str] = {
+				"offering_id": new_offering_id_str,
+				"course_id": course_id_val_str,
+				"course_name": course_details_dict_copy.get("name", "N/A Course Name"),
+				"program_id": program_id,
+				"status": "unscheduled", # Initial status [cite: 1]
+				"instructor_id": "",
+				"classroom_id": "",
+				"primary_day": "", 
+				"start_time_slot": "",
+				"pattern": "", 
+				"duration_slots": 0, 
+				"max_capacity": course_details_dict_copy.get("default_capacity", 30), 
+				"enrolled_student_ids": []
+			} # [cite: 1]
+			new_offerings_were_added = true # [cite: 1]
+			if DETAILED_LOGGING_ENABLED: print_debug(["Generated new course offering: '", new_offering_id_str, "' for course '", course_id_val_str, "' in program '", program_id, "'."]) # [cite: 1]
 
-		# The "program_id" field in the offering can be the one that triggered it,
-		# or "SHARED", or a list. For simplicity, let's use the triggering program_id for now.
-		# The critical part is that students will enroll based on 'course_id'.
-		course_offerings[new_offering_id_str] = {
-			"offering_id": new_offering_id_str,
-			"course_id": course_id_to_offer,
-			"course_name": course_definition.get("name", "N/A Course Name"),
-			"program_id": program_id, # Program that initiated this shared offering's creation
-			"status": "unscheduled",
-			"instructor_id": "",
-			"classroom_id": "",
-			"primary_day": "",
-			"start_time_slot": "",
-			"pattern": "",
-			"duration_slots": 0,
-			"max_capacity": course_definition.get("default_capacity", 30),
-			"enrolled_student_ids": []
-		}
-		new_offerings_were_added_this_call = true
-		if DETAILED_LOGGING_ENABLED: 
-			print_debug(["  AM: Generated NEW globally unique course offering: '%s' for course '%s' (triggered by program '%s')." % [new_offering_id_str, course_id_to_offer, program_id]])
-
-	if new_offerings_were_added_this_call:
-		emit_signal("course_offerings_updated")
-
+	if new_offerings_were_added: # [cite: 1]
+		emit_signal("course_offerings_updated") # [cite: 1]
 		
 func get_unscheduled_course_offerings() -> Array[Dictionary]: # [cite: 1]
 	var unscheduled_list: Array[Dictionary] = [] # [cite: 1]
@@ -379,9 +362,6 @@ func place_course_in_slot_pending(offering_id: String, p_classroom_id: String, p
 			classroom_schedules[p_classroom_id][day_in_p][actual_time_slot] = offering_id
 
 	print_debug("AM: Placed %s in %s, %s %s (Pattern: %s) - PENDING PROFESSOR" % [offering_id, p_classroom_id, p_primary_day, p_start_time_slot, pattern_to_use])
-	
-	_notify_enrolled_students_of_update(offering_id)
-
 	emit_signal("course_offerings_updated")
 	emit_signal("schedules_updated")
 	return true
@@ -454,9 +434,6 @@ func assign_instructor_to_pending_course(offering_id: String, p_professor_id: St
 		professor_manager.assign_professor_to_course(p_professor_id, offering_id)
 
 	print_debug("AM: Assigned Professor %s to Offering %s. Status: SCHEDULED" % [p_professor_id, offering_id])
-	
-	_notify_enrolled_students_of_update(offering_id)
-
 	emit_signal("class_scheduled", offering_id, scheduled_class_details[offering_id]) # Use existing signal
 	emit_signal("schedules_updated")
 	emit_signal("course_offerings_updated") # Status changed
@@ -614,35 +591,39 @@ func is_professor_teaching_another_course_at(p_professor_id: String, day_to_chec
 						return true
 	return false
 
-# In AcademicManager.gd - Replace this entire function
+func get_offering_details(offering_id: String) -> Dictionary: # [cite: 1]
+	if course_offerings.has(offering_id): # [cite: 1]
+		var offering_data = course_offerings[offering_id] # This is the primary data source now
+		var details = offering_data.duplicate(true) # [cite: 1]
 
-func get_offering_details(offering_id: String) -> Dictionary:
-	if course_offerings.has(offering_id):
-		var offering_data = course_offerings[offering_id]
-		var details = offering_data.duplicate(true)
+		# Ensure course_name is present (might not be if generated without full UniversityData init)
+		if not details.has("course_name") or details.course_name == "N/A Course Name":
+			if is_instance_valid(university_data):
+				var course_def = university_data.get_course_details(details.course_id)
+				details.course_name = course_def.get("name", "N/A")
+		
+		# If it was fully scheduled, scheduled_class_details might have a more "canonical" version for some fields
+		# However, course_offerings should now be the single source of truth for the current state.
+		# The old version merged from scheduled_class_details. If that's still desired:
+		# if details.status == "scheduled" and scheduled_class_details.has(offering_id):
+		# 	details.merge(scheduled_class_details[offering_id], true) # Overwrite with scheduled_class_details if keys clash
 
-		# --- NEW: FLATTENING LOGIC ---
-		# This copies the nested schedule details to the top level to prevent parsing errors.
-		if details.has("schedule_info") and details["schedule_info"] is Dictionary:
-			var schedule_info = details["schedule_info"]
-			for key in schedule_info:
-				details[key] = schedule_info[key]
-		# --- END OF NEW LOGIC ---
-
+		# Ensure enrollment and capacity are correctly reflected
 		details["enrolled_count"] = details.get("enrolled_student_ids", []).size()
-		if not details.has("max_capacity") or details.max_capacity == 0:
+		if not details.has("max_capacity") or details.max_capacity == 0: # If pending, max_capacity is from classroom
 			if not details.get("classroom_id", "").is_empty():
-				details.max_capacity = get_classroom_capacity(str(details.classroom_id))
-			elif is_instance_valid(university_data):
+				details.max_capacity = get_classroom_capacity(details.classroom_id)
+			elif is_instance_valid(university_data): # Fallback to course default if no classroom yet
 				var course_def = university_data.get_course_details(details.course_id)
 				details.max_capacity = course_def.get("default_capacity", 30)
 			else:
-				details.max_capacity = 30
+				details.max_capacity = 30 # Absolute fallback
 
-		return details
-
-	if DETAILED_LOGGING_ENABLED: print_debug(["AM.get_offering_details: Offering ID not found:", offering_id])
-	return {}
+		# if DETAILED_LOGGING_ENABLED: print_debug(["AM.get_offering_details: Returning for", offering_id, "Status:", details.status, "Pattern:", details.get("pattern", "N/A")]) # [cite: 32]
+		return details # [cite: 1]
+	
+	if DETAILED_LOGGING_ENABLED: print_debug(["AM.get_offering_details: Offering ID not found:", offering_id]) # [cite: 1]
+	return {} # [cite: 1]
 
 func get_schedule_for_classroom(classroom_id: String) -> Dictionary: # [cite: 1]
 	if classroom_schedules.has(classroom_id): # [cite: 1]
@@ -878,60 +859,47 @@ func get_freshman_first_semester_courses(program_id: String) -> Array[String]: #
 		if DETAILED_LOGGING_ENABLED: print_debug(["Warning: No Freshman/1st Sem courses in curriculum for '", program_id, "'."]) # [cite: 1]
 	return courses_to_return_list # [cite: 1]
 
-# In AcademicManager.gd
+func get_classroom_location(classroom_id_str: String) -> Vector3: # [cite: 1]
+	var nav_y = ACADEMIC_MGR_STUDENT_EXPECTED_NAVMESH_Y # [cite: 1]
 
-func get_classroom_location(classroom_id_str: String) -> Vector3:
-	var nav_y = ACADEMIC_MGR_STUDENT_EXPECTED_NAVMESH_Y 
+	if not is_instance_valid(building_manager): # [cite: 33]
+		printerr("AM: BuildingManager not available for classroom location: ", classroom_id_str) # [cite: 1]
+		return Vector3.ZERO # [cite: 1]
 
-	if not is_instance_valid(building_manager): 
-		printerr("AM: BuildingManager not available for classroom location: %s" % classroom_id_str)
-		return Vector3.ZERO 
+	if building_manager.has_method("get_functional_buildings_data"): # [cite: 1]
+		var functional_buildings: Dictionary = building_manager.get_functional_buildings_data() # [cite: 1]
+		if functional_buildings.has(classroom_id_str): # [cite: 1]
+			var classroom_cluster_data = functional_buildings[classroom_id_str] # [cite: 1]
 
-	if building_manager.has_method("get_functional_buildings_data"):
-		var functional_buildings: Dictionary = building_manager.get_functional_buildings_data()
-		if functional_buildings.has(classroom_id_str):
-			var classroom_cluster_data = functional_buildings[classroom_id_str]
-
-			if classroom_cluster_data.get("building_type") == "class":
-				# Check for physical capacity (your existing logic, seems fine)
-				var current_physical_users = classroom_cluster_data.get("current_users", 0)
-				var total_physical_capacity = classroom_cluster_data.get("total_capacity", 0)
-				if total_physical_capacity > 0 and current_physical_users >= total_physical_capacity:
-					if DETAILED_LOGGING_ENABLED: print_debug(["AM: Classroom '%s' is PHYSICALLY FULL. Returning no location." % classroom_id_str])
-					return Vector3.ZERO
+			if classroom_cluster_data.get("building_type") == "class": # [cite: 1]
+				var current_physical_users = classroom_cluster_data.get("current_users", 0) # [cite: 1]
+				var total_physical_capacity = classroom_cluster_data.get("total_capacity", 0) # [cite: 1]
 				
-				var rep_node = classroom_cluster_data.get("representative_block_node")
-				if is_instance_valid(rep_node) and rep_node is Node3D:
-					var base_position = rep_node.global_position
+				if total_physical_capacity > 0 and current_physical_users >= total_physical_capacity: # [cite: 1]
+					if DETAILED_LOGGING_ENABLED: print_debug(["AM: Classroom '", classroom_id_str, "' is PHYSICALLY FULL (BM users: ", current_physical_users, "/", total_physical_capacity, "). Returning no location."]) # [cite: 34]
+					return Vector3.ZERO # [cite: 1]
+				
+				var rep_node = classroom_cluster_data.get("representative_block_node") # [cite: 1]
+				if is_instance_valid(rep_node) and rep_node is Node3D: # [cite: 1]
+					var base_position = rep_node.global_position # [cite: 1]
 					
-					# --- INCREASED RANDOM OFFSET ---
-					# Increase the radius to spread out arrival points more.
-					# This helps if multiple students are arriving simultaneously.
-					var random_offset_radius = 1.0 # Increased from 0.4
-					var random_offset_x: float = randf_range(-random_offset_radius, random_offset_radius)
-					var random_offset_z: float = randf_range(-random_offset_radius, random_offset_radius)
-					# --- END INCREASED RANDOM OFFSET ---
-					
-					# The student_specific_target is their conceptual goal.
-					# Navigation will snap this to the NavMesh.
-					var student_specific_target = Vector3(base_position.x + random_offset_x, 
-														base_position.y, # Keep original Y for conceptual target before projecting
-														base_position.z + random_offset_z)
-					
-					# Return the conceptual target; NavAgent in Student.gd will project Y and snap.
-					if DETAILED_LOGGING_ENABLED: print_debug(["AM: Classroom '%s' location generated: %s (around base %s)" % [classroom_id_str, str(student_specific_target.round()), str(base_position.round())]])
-					return student_specific_target 
+					var random_offset_x: float = randf_range(-0.4, 0.4) # [cite: 1]
+					var random_offset_z: float = randf_range(-0.4, 0.4) # [cite: 1]
+					var student_specific_target = Vector3(base_position.x + random_offset_x, # [cite: 1]
+														nav_y,  # [cite: 1]
+														base_position.z + random_offset_z) # [cite: 1]
+					return student_specific_target # [cite: 1]
 				else:
-					if DETAILED_LOGGING_ENABLED: print_debug(["AM: Classroom cluster '%s' has NO valid representative_block_node." % classroom_id_str])
+					if DETAILED_LOGGING_ENABLED: print_debug(["AM: Classroom cluster '", classroom_id_str, "' has NO valid representative_block_node."]) # [cite: 1]
 			else:
-				if DETAILED_LOGGING_ENABLED: print_debug(["AM: Building cluster '%s' is NOT 'class'. Actual: %s" % [classroom_id_str, classroom_cluster_data.get("building_type")]])
+				if DETAILED_LOGGING_ENABLED: print_debug(["AM: Building cluster '", classroom_id_str, "' is NOT 'class'. Actual: ", classroom_cluster_data.get("building_type")]) # [cite: 35]
 		else:
-			if DETAILED_LOGGING_ENABLED: print_debug(["AM: Classroom ID '%s' NOT FOUND in functional_buildings." % classroom_id_str])
+			if DETAILED_LOGGING_ENABLED: print_debug(["AM: Classroom ID '", classroom_id_str, "' NOT FOUND in functional_buildings. Keys: ", str(functional_buildings.keys())]) # [cite: 1]
 	else:
-		printerr("AM: BuildingManager missing 'get_functional_buildings_data'.")
+		printerr("AM: BuildingManager missing 'get_functional_buildings_data'.") # [cite: 1]
 
-	if DETAILED_LOGGING_ENABLED: print_debug(["AM: get_classroom_location returning Vector3.ZERO for classroom_id: '%s'." % classroom_id_str])
-	return Vector3.ZERO
+	if DETAILED_LOGGING_ENABLED: print_debug(["AM: get_classroom_location returning Vector3.ZERO for classroom_id: '", classroom_id_str, "'."]) # [cite: 1]
+	return Vector3.ZERO # [cite: 1]
 
 # --- Student Simulation Logic (Existing User Code - Largely Untouched Below) ---
 func _on_student_despawned(data: Dictionary): # [cite: 1]
@@ -1246,16 +1214,15 @@ func _reinstantiate_student_from_simulation(student_data_from_simulation_list: D
 	
 	var restored_degree_prog_summary = student_data_from_simulation_list.get("degree_progression_summary", {}) # [cite: 1]
 
-	new_student.initialize_new_student( 
-		student_data_from_simulation_list.get("student_id"),                     # Arg 1: s_id
-		student_data_from_simulation_list.get("student_name"),                   # Arg 2: s_name
-		student_data_from_simulation_list.get("current_program_id"),             # Arg 3: prog_id
-		student_data_from_simulation_list.get("academic_start_year"),            # Arg 4: start_year_cal
-		self,                                                                    # Arg 5: acad_man
-		university_data,                                                         # Arg 6: univ_data
-		time_manager,                                                            # Arg 7: time_man
-		student_data_from_simulation_list  # Arg 8: restored_persistent_data (the whole dictionary)
-	)
+	new_student.initialize_new_student( # [cite: 1]
+		student_data_from_simulation_list.get("student_id"), # [cite: 1]
+		student_data_from_simulation_list.get("student_name"), # [cite: 1]
+		student_data_from_simulation_list.get("current_program_id"), # [cite: 1]
+		student_data_from_simulation_list.get("academic_start_year"), # [cite: 1]
+		self, university_data, time_manager, # [cite: 1]
+		offering_id_just_finished, current_visual_slot_when_exited, # [cite: 1]
+		restored_degree_prog_summary # [cite: 1]
+	) # [cite: 1]
 	
 	if is_instance_valid(student_manager_ref) and new_student.has_signal("student_despawn_data_for_manager"): # [cite: 1]
 		if not new_student.is_connected("student_despawn_data_for_manager", Callable(student_manager_ref, "_on_student_node_data_update_requested")): # [cite: 1]
@@ -1536,37 +1503,6 @@ func print_debug(message_parts): # [cite: 1]
 	else:
 		final_message += str(message_parts) # [cite: 1]
 	print(final_message) # [cite: 1]
-
-# In AcademicManager.gd
-
-func _notify_enrolled_students_of_update(offering_id: String):
-	"""
-	Finds all students enrolled in an offering and pushes the latest details to them.
-	This is essential for keeping student schedules synchronized.
-	"""
-	if not course_offerings.has(offering_id): return
-	
-	var offering_data = course_offerings[offering_id]
-	var enrolled_ids: Array = offering_data.get("enrolled_student_ids", [])
-	
-	if enrolled_ids.is_empty(): return
-
-	# Get the StudentManager to find the student nodes
-	var student_manager = get_node_or_null("/root/MainScene/StudentManager") # Adjust path if needed
-	if not is_instance_valid(student_manager):
-		printerr("AM: Cannot notify students of update, StudentManager not found!")
-		return
-		
-	var latest_details = get_offering_details(offering_id)
-	if latest_details.is_empty(): return # Don't send empty updates
-	
-	if DETAILED_LOGGING_ENABLED:
-		print_debug(["Notifying %d students of update for offering %s" % [enrolled_ids.size(), offering_id]])
-
-	for student_id in enrolled_ids:
-		var student_node: Student = student_manager.get_student_node_by_id(student_id)
-		if is_instance_valid(student_node) and student_node.has_method("update_enrollment_details"):
-			student_node.update_enrollment_details(offering_id, latest_details)
 
 # Temporary function in AcademicManager.gd
 func debug_get_offering_status(offering_id_to_check: String):

@@ -15,12 +15,6 @@ var gpa: float = 0.0 # Optional: Implement if you want GPA calculation
 var is_graduated: bool = false
 var graduation_date_str: String = "" # e.g., "Spring 2029"
 
-# --- ENSURE THESE ARE PRESENT ---
-var faculty_advisor_id: String = ""
-enum ThesisStatusEnum { NOT_STARTED, PROPOSAL_APPROVED, IN_PROGRESS, SUBMITTED_FOR_DEFENSE, COMPLETED_PASS, COMPLETED_FAIL }
-var thesis_status: ThesisStatusEnum = ThesisStatusEnum.NOT_STARTED
-# --- END ENSURE ---
-
 func _init(s_id: String, p_id: String, start_year: int, start_semester: int = 1):
 	self.student_id = s_id
 	self.program_id = p_id

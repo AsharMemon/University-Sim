@@ -20,14 +20,9 @@ shape = SubResource("CapsuleShape3D_2mnvv")
 avoidance_enabled = true
 height = 2.0
 radius = 2.0
-neighbor_distance = 67.7
+neighbor_distance = 150.0
 max_neighbors = 20
 time_horizon_agents = 2.0
 time_horizon_obstacles = 1.0
 
 [node name="PathUpdateTimer" type="Timer" parent="."]
-
-[node name="Label3D" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.119873, 1.85981, -0.198537)
-billboard = 2
-font_size = 60

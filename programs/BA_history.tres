@@ -11,12 +11,9 @@
 script = ExtResource("2_f6hcc")
 program_id = "HTST"
 program_name = "BA History"
-level = 0
 credits_to_graduate = 120.0
-typical_duration_years = 4
-semesters_per_year = 2
-requires_thesis_or_dissertation = true
 unlock_cost = 5000
+semesters_per_year = 2
 courses_in_program_resources = Array[ExtResource("1_saxar")]([ExtResource("2_jln62"), ExtResource("3_ta3vx"), ExtResource("4_sn8gk"), ExtResource("5_ce88v")])
 mandatory_courses_resources = Array[ExtResource("1_saxar")]([ExtResource("2_jln62"), ExtResource("3_ta3vx"), ExtResource("4_sn8gk"), ExtResource("5_ce88v")])
 metadata/_custom_type_script = "uid://di5qjugq8spy1"

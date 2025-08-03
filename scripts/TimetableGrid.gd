@@ -299,15 +299,7 @@ func clear_professor_availability_overlay():
 		if child_node is PanelContainer and child_node.has_method("revert_display_from_overlay"):
 			var cell: TimeSlotCell = child_node as TimeSlotCell
 			cell.revert_display_from_overlay()
-
-func refresh_display():
-	if DETAILED_LOGGING_ENABLED: print_debug("refresh_display() called for classroom: %s" % classroom_id)
-	if not is_instance_valid(academic_manager):
-		print_debug("Cannot refresh_display, AcademicManager is invalid.")
-		return
-	# No need to call _populate_grid() again unless the days/time_slots change
-	_display_scheduled_classes()
-	
+			
 func print_debug(message_parts): # Copied from your script
 	if not DETAILED_LOGGING_ENABLED: return
 	var final_message = "[TimetableGrid C:%s]: " % classroom_id.right(4) if not classroom_id.is_empty() else "[TimetableGrid]: "

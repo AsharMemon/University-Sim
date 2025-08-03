@@ -80,13 +80,10 @@ shadow_enabled = true
 environment = SubResource("Environment_1bvp3")
 
 [node name="CameraRig" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.04273, 0)
 script = ExtResource("2_o6xl0")
-height_at_min_zoom = 1.0
-height_at_max_zoom = 25.0
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig"]
-transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 10, 20)
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 25, 20)
 current = true
 
 [node name="PlacedBlocks" type="Node3D" parent="."]

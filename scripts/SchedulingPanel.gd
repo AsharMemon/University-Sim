@@ -1,4 +1,4 @@
-# SchedulingPanel.gd
+# SchedulingUI.gd
 class_name SchedulingPanel
 extends PanelContainer
 
@@ -6,13 +6,14 @@ extends PanelContainer
 @export var academic_manager: AcademicManager
 @export var professor_manager: ProfessorManager
 
+# Adjust these paths precisely to match your new scene tree structure (e.g., inside MainHBox)
 @export var unscheduled_courses_list_vbox: VBoxContainer
 @export var professor_list_vbox: VBoxContainer
 @export var classroom_tabs: TabContainer
 
 # --- Scene Preloads ---
 const UnscheduledCourseEntryScene: PackedScene = preload("res://scenes/UnscheduledCourseEntry.tscn")
-const ProfessorListEntryScene: PackedScene = preload("res://scenes/ProfessorListEntry.tscn")
+const ProfessorListEntryScene: PackedScene = preload("res://scenes/ProfessorListEntry.tscn") # New
 const TimetableGridScene: PackedScene = preload("res://scenes/TimetableGrid.tscn")
 
 # --- State for Overlay ---
@@ -23,38 +24,39 @@ const DETAILED_LOGGING_ENABLED: bool = true
 
 # --- Initialization ---
 func _ready():
+	# Validate critical node references
 	if not is_instance_valid(unscheduled_courses_list_vbox):
-		printerr("SchedulingPanel: UnscheduledCoursesListVBox node not found! Check path.")
+		printerr("SchedulingUI: UnscheduledCoursesListVBox node not found! Check path.")
 	if not is_instance_valid(professor_list_vbox):
-		printerr("SchedulingPanel: ProfessorListVBox node not found! Check path.")
+		printerr("SchedulingUI: ProfessorListVBox node not found! Check path.")
 	if not is_instance_valid(classroom_tabs):
-		printerr("SchedulingPanel: ClassroomTabs node not found! Check path.")
+		printerr("SchedulingUI: ClassroomTabs node not found! Check path.")
 
-	if not UnscheduledCourseEntryScene: printerr("SchedulingPanel: CRITICAL - UnscheduledCourseEntry.tscn not preloaded.")
-	if not ProfessorListEntryScene: printerr("SchedulingPanel: CRITICAL - ProfessorListEntry.tscn not preloaded.")
-	if not TimetableGridScene: printerr("SchedulingPanel: CRITICAL - TimetableGrid.tscn not preloaded.")
+	if not UnscheduledCourseEntryScene: printerr("SchedulingUI: CRITICAL - UnscheduledCourseEntry.tscn not preloaded.")
+	if not ProfessorListEntryScene: printerr("SchedulingUI: CRITICAL - ProfessorListEntry.tscn not preloaded.")
+	if not TimetableGridScene: printerr("SchedulingUI: CRITICAL - TimetableGrid.tscn not preloaded.")
 
 	if not is_instance_valid(academic_manager):
-		printerr("SchedulingPanel: AcademicManager not assigned in editor. Attempting fallback.")
+		printerr("SchedulingUI: AcademicManager not assigned in editor. Attempting fallback.")
 		academic_manager = get_node_or_null("/root/MainScene/AcademicManager") # Adjust path
 		if not is_instance_valid(academic_manager):
-			printerr("SchedulingPanel: CRITICAL - AcademicManager still not found. UI cannot function.")
+			printerr("SchedulingUI: CRITICAL - AcademicManager still not found. UI cannot function.")
 			return
 
 	if not is_instance_valid(professor_manager):
-		printerr("SchedulingPanel: ProfessorManager not assigned in editor. Attempting fallback.")
+		printerr("SchedulingUI: ProfessorManager not assigned in editor. Attempting fallback.")
 		professor_manager = get_node_or_null("/root/MainScene/ProfessorManager") # Adjust path
 		if not is_instance_valid(professor_manager):
-			printerr("SchedulingPanel: CRITICAL - ProfessorManager not found. Professor assignment will not work.")
-	
+			printerr("SchedulingUI: CRITICAL - ProfessorManager not found. Professor assignment will not work.")
+			# Professor list will show an error if manager is missing
+
 	# Connect signals from AcademicManager
-	if is_instance_valid(academic_manager):
-		if academic_manager.has_signal("course_offerings_updated"):
-			if not academic_manager.is_connected("course_offerings_updated", Callable(self, "_on_academic_manager_course_offerings_updated")):
-				academic_manager.course_offerings_updated.connect(Callable(self, "_on_academic_manager_course_offerings_updated"))
-		if academic_manager.has_signal("schedules_updated"):
-			if not academic_manager.is_connected("schedules_updated", Callable(self, "_on_academic_manager_schedules_updated")):
-				academic_manager.schedules_updated.connect(Callable(self, "_on_academic_manager_schedules_updated"))
+	if academic_manager.has_signal("course_offerings_updated"):
+		if not academic_manager.is_connected("course_offerings_updated", Callable(self, "_on_academic_manager_course_offerings_updated")):
+			academic_manager.course_offerings_updated.connect(Callable(self, "_on_academic_manager_course_offerings_updated"))
+	if academic_manager.has_signal("schedules_updated"):
+		if not academic_manager.is_connected("schedules_updated", Callable(self, "_on_academic_manager_schedules_updated")):
+			academic_manager.schedules_updated.connect(Callable(self, "_on_academic_manager_schedules_updated"))
 	
 	# Connect to ProfessorManager signal
 	if is_instance_valid(professor_manager) and professor_manager.has_signal("faculty_list_updated"):
@@ -63,13 +65,10 @@ func _ready():
 
 	call_deferred("refresh_ui")
 
-
 func refresh_ui():
-	if DETAILED_LOGGING_ENABLED: print_debug("refresh_ui() called.")
 	_refresh_unscheduled_courses_list()
-	_populate_professor_list() 
+	_populate_professor_list() # Populate/Repopulate professor list
 	_refresh_classroom_tabs_and_schedules()
-
 
 func _refresh_unscheduled_courses_list():
 	if not is_instance_valid(unscheduled_courses_list_vbox) or \
@@ -85,7 +84,6 @@ func _refresh_unscheduled_courses_list():
 	if unscheduled_offerings.is_empty():
 		var empty_label = Label.new()
 		empty_label.text = "No courses to schedule."
-		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER # Make it look a bit better
 		unscheduled_courses_list_vbox.add_child(empty_label)
 		return
 
@@ -94,14 +92,21 @@ func _refresh_unscheduled_courses_list():
 		if is_instance_valid(entry_instance):
 			unscheduled_courses_list_vbox.add_child(entry_instance)
 			if entry_instance.has_method("setup"):
-				entry_instance.setup(offering_data, academic_manager) # Pass academic_manager
-			else:
-				printerr("UnscheduledCourseEntry instance is missing setup() method.")
+				entry_instance.setup(offering_data, academic_manager)
+				# Optional: connect to a signal from entry_instance if you want to filter professor list
+				# when an UnscheduledCourseEntry is selected or its drag starts.
+				# Example:
+				# if not entry_instance.is_connected("course_interaction_started", Callable(self, "_on_unscheduled_course_interaction")):
+				# 	entry_instance.course_interaction_started.connect(Callable(self, "_on_unscheduled_course_interaction"))
 		else:
 			printerr("Failed to instantiate UnscheduledCourseEntryScene.")
 
+# func _on_unscheduled_course_interaction(course_id: String):
+# 	# Called when an unscheduled course is clicked or drag starts (if you implement that signal)
+# 	if DETAILED_LOGGING_ENABLED: print_debug("Interaction with course_id: %s. Refreshing professor list (filtered)." % course_id)
+# 	_populate_professor_list(course_id) # Pass course_id for filtering
 
-func _populate_professor_list(filter_course_id: String = ""): # filter_course_id is still conceptual
+func _populate_professor_list(filter_course_id: String = ""):
 	if not is_instance_valid(professor_list_vbox):
 		if DETAILED_LOGGING_ENABLED: print_debug("ProfessorListVBox not valid for populating.")
 		return
@@ -112,61 +117,66 @@ func _populate_professor_list(filter_course_id: String = ""): # filter_course_id
 	if not is_instance_valid(professor_manager) or not ProfessorListEntryScene:
 		var error_label = Label.new()
 		error_label.text = "Professor system N/A."
-		error_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		professor_list_vbox.add_child(error_label)
 		if DETAILED_LOGGING_ENABLED: print_debug("Cannot populate professor list: ProfessorManager or Scene missing.")
 		return
 
-	var hired_profs: Array[Professor] = professor_manager.get_hired_professors() # This returns Array[Professor]
+	var hired_profs: Array[Professor] = professor_manager.get_hired_professors()
 	
-	# Conceptual filtering logic - currently not active
-	var filter_by_specialization = false 
-	# if not filter_course_id.is_empty():
-	#	 # Logic to get course_target_spec and set filter_by_specialization = true
-	#	 pass
+	# --- Start Advanced Filtering Logic (Optional) ---
+	var course_target_spec: Professor.Specialization # Using uninitialized type for later check
+	var filter_by_specialization = false
+	if not filter_course_id.is_empty() and is_instance_valid(academic_manager):
+		# You'd need a method in AcademicManager like get_course_details_by_course_id(filter_course_id)
+		# that returns a dictionary or object with course's required specialization.
+		# For now, this part is conceptual. Assume academic_manager can provide specialization enum.
+		# var course_details = academic_manager.get_course_definition(filter_course_id) # Example method
+		# if course_details and course_details.has("required_specialization_enum"):
+		# 	course_target_spec = course_details.required_specialization_enum
+		# 	filter_by_specialization = true
+		# 	if DETAILED_LOGGING_ENABLED: print_debug("Filtering prof list for spec: %s" % Professor.Specialization.keys()[course_target_spec])
+		pass # Placeholder for filter activation
+	# --- End Advanced Filtering Logic ---
 
 	if hired_profs.is_empty():
 		var empty_label = Label.new()
 		empty_label.text = "No professors hired."
-		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		professor_list_vbox.add_child(empty_label)
 		return
 
 	var professors_added_count = 0
-	for prof_data_object in hired_profs: # prof_data_object is a Professor data object
-		# Conceptual filter application
+	for prof in hired_profs:
 		# if filter_by_specialization:
-		#     # ... (your filter logic here) ...
-		#     continue # Skip if professor doesn't match filter
+		# 	# Professor must match specific course spec, or be a generalist if course allows,
+		# 	# or course must be general if prof is generalist.
+		# 	var prof_spec = prof.specialization
+		# 	if prof_spec != course_target_spec and \
+		# 	   prof_spec != Professor.Specialization.GENERAL and \
+		# 	   course_target_spec != Professor.Specialization.GENERAL:
+		# 		continue # Skip this professor if specializations don't align strictly
 
 		var entry_instance = ProfessorListEntryScene.instantiate()
 		if is_instance_valid(entry_instance):
 			professor_list_vbox.add_child(entry_instance)
 			if entry_instance.has_method("setup"):
-				entry_instance.setup(prof_data_object) # Pass the Professor data object
+				entry_instance.setup(prof)
 				professors_added_count += 1
-				# Connect to drag signals from ProfessorListEntry
-				if entry_instance.has_signal("professor_drag_started"):
-					if not entry_instance.is_connected("professor_drag_started", Callable(self, "_on_professor_drag_started_for_overlay")):
-						entry_instance.professor_drag_started.connect(Callable(self, "_on_professor_drag_started_for_overlay"))
-				if entry_instance.has_signal("professor_drag_ended"):
-					if not entry_instance.is_connected("professor_drag_ended", Callable(self, "_on_professor_drag_ended_for_overlay")):
-						entry_instance.professor_drag_ended.connect(Callable(self, "_on_professor_drag_ended_for_overlay"))
-			else:
-				printerr("ProfessorListEntry instance is missing setup() method.")
+				# --- NEW: Connect to drag signals from ProfessorListEntry ---
+				if not entry_instance.is_connected("professor_drag_started", Callable(self, "_on_professor_drag_started_for_overlay")):
+					entry_instance.professor_drag_started.connect(Callable(self, "_on_professor_drag_started_for_overlay"))
+				if not entry_instance.is_connected("professor_drag_ended", Callable(self, "_on_professor_drag_ended_for_overlay")):
+					entry_instance.professor_drag_ended.connect(Callable(self, "_on_professor_drag_ended_for_overlay"))
+				# --- END NEW ---
 		else:
 			printerr("Failed to instantiate ProfessorListEntryScene.")
 	
-	if professors_added_count == 0: # If loop ran but nothing added (e.g., due to filtering or no hired profs initially)
-		var no_match_label = Label.new()
-		if filter_by_specialization : # If filtering was active
-			no_match_label.text = "No professors match filter."
-		elif hired_profs.size() > 0 : # Hired profs exist but none were added (should not happen without filter)
-			no_match_label.text = "Error populating professor list."
-		# else: # This case means hired_profs was empty, already handled above.
-		if not no_match_label.text.is_empty():
-			no_match_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			professor_list_vbox.add_child(no_match_label)
+	if professors_added_count == 0 and filter_by_specialization: # Only show if filtering was active
+		var no_match_label = Label.new(); no_match_label.text = "No professors match specialization."
+		professor_list_vbox.add_child(no_match_label)
+	elif professors_added_count == 0 and hired_profs.size() > 0: # Should mean all were filtered out
+		var empty_filter_label = Label.new(); empty_filter_label.text = "No professors match filter."
+		professor_list_vbox.add_child(empty_filter_label)
+
 
 	if DETAILED_LOGGING_ENABLED: print_debug("Professor list populated with %d professors." % professors_added_count)
 
@@ -175,91 +185,102 @@ func _refresh_classroom_tabs_and_schedules():
 	if not is_instance_valid(classroom_tabs) or \
 	   not is_instance_valid(academic_manager) or \
 	   not TimetableGridScene:
-		printerr("SchedulingPanel: Cannot refresh classroom tabs, critical component missing.")
+		printerr("SchedulingUI: Cannot refresh classroom tabs, critical component missing.")
 		return
 
 	var current_tab_idx = classroom_tabs.current_tab
 	
-	for i in range(classroom_tabs.get_tab_count() - 1, -1, -1):
-		var tab_child = classroom_tabs.get_tab_control(i)
-		if is_instance_valid(tab_child):
-			classroom_tabs.remove_child(tab_child) 
-			tab_child.queue_free()
+	var children_to_remove = classroom_tabs.get_children()
+	for child in children_to_remove:
+		classroom_tabs.remove_child(child)
+		child.queue_free()
 
-	var available_classrooms = academic_manager.get_available_classrooms() # This returns Array[Dictionary]
+	var available_classrooms = academic_manager.get_available_classrooms()
 
 	if available_classrooms.is_empty():
-		var placeholder_panel = PanelContainer.new() # Use PanelContainer for better default appearance
+		var placeholder_panel = Panel.new()
 		var no_classrooms_label = Label.new()
 		no_classrooms_label.text = "No classrooms available. Build some!"
 		no_classrooms_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		no_classrooms_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		no_classrooms_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-		placeholder_panel.add_child(no_classrooms_label)
-		# Make label fill the panel
 		no_classrooms_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		no_classrooms_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		placeholder_panel.name = "Status"
+		placeholder_panel.add_child(no_classrooms_label)
+		placeholder_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		classroom_tabs.add_child(placeholder_panel)
-		classroom_tabs.set_tab_title(0, "Status") # Set a title for the placeholder tab
 		return
 
-	for classroom_data in available_classrooms: # classroom_data is a Dictionary
-		var classroom_id = classroom_data.get("id", "") 
-		var classroom_name = classroom_data.get("name", "Classroom %s" % classroom_id.right(5))
-
-		if classroom_id.is_empty():
-			printerr("SchedulingPanel: Classroom data found with empty ID. Skipping.")
-			continue
-
-		var timetable_grid_instance = TimetableGridScene.instantiate() as TimetableGrid
+	for classroom_data in available_classrooms:
+		var classroom_id = classroom_data.id
+		var timetable_grid_instance = TimetableGridScene.instantiate()
 		if is_instance_valid(timetable_grid_instance):
-			timetable_grid_instance.name = classroom_name # Node name for the tab title
+			timetable_grid_instance.name = "Classroom %s" % classroom_id.right(5) # Shorten ID for tab name
+			
+			# For advanced overlay: Pass reference to this SchedulingUI instance
+			# if timetable_grid_instance.has_method("set_scheduling_ui_parent"):
+			# 	timetable_grid_instance.set_scheduling_ui_parent(self)
+
 			classroom_tabs.add_child(timetable_grid_instance)
 			
 			if timetable_grid_instance.has_method("setup_grid"):
-				if not is_instance_valid(self.professor_manager): # Check self.professor_manager
-					printerr("SchedulingPanel: ProfessorManager is INVALID when setting up TimetableGrid for %s." % classroom_id)
+				if not is_instance_valid(self.professor_manager):
+					printerr("SchedulingUI: ProfessorManager is INVALID when trying to setup TimetableGrid for classroom %s." % classroom_id)
+				# Pass the SchedulingPanel's professor_manager reference
 				timetable_grid_instance.setup_grid(classroom_id, academic_manager, self.professor_manager)
 			else:
-				printerr("SchedulingPanel: TimetableGrid for '%s' missing setup_grid()." % classroom_id)
+				printerr("SchedulingUI: TimetableGrid instance for classroom '", classroom_id, "' is missing setup_grid() method.")
 		else:
-			printerr("SchedulingPanel: Failed to instantiate TimetableGridScene for %s" % classroom_id)
+			printerr("SchedulingUI: Failed to instantiate TimetableGridScene for classroom ", classroom_id)
 
 	if current_tab_idx >= 0 and current_tab_idx < classroom_tabs.get_tab_count():
 		classroom_tabs.current_tab = current_tab_idx
 	elif classroom_tabs.get_tab_count() > 0:
 		classroom_tabs.current_tab = 0
-	
-	if _is_professor_being_dragged_for_overlay and not _dragged_professor_id_for_overlay.is_empty():
-		var current_tab_node = classroom_tabs.get_current_tab_control()
-		if is_instance_valid(current_tab_node) and current_tab_node is TimetableGrid:
-			current_tab_node.display_professor_availability_overlay(_dragged_professor_id_for_overlay)
-
 
 # --- Signal Handlers ---
 func _on_academic_manager_course_offerings_updated():
 	if DETAILED_LOGGING_ENABLED: print_debug("Received course_offerings_updated. Refreshing unscheduled courses list.")
 	_refresh_unscheduled_courses_list()
+	# If professor list is filtered by selected unscheduled course, it might need refresh too:
+	# _populate_professor_list() # Or with a specific filter_course_id if one is "active"
 
 func _on_academic_manager_schedules_updated():
 	if DETAILED_LOGGING_ENABLED: print_debug("Received schedules_updated. Refreshing classroom schedules.")
-	_refresh_classroom_tabs_and_schedules()
+	_refresh_classroom_tabs_and_schedules() # This makes TimetableGrid redraw its cells
 
 func _on_faculty_list_updated():
 	if DETAILED_LOGGING_ENABLED: print_debug("Received faculty_list_updated. Refreshing professor list.")
-	_populate_professor_list()
+	_populate_professor_list() # Refresh with current filter (if any)
+
+# --- Overlay Management Functions (Advanced - called by draggable items if they emit signals) ---
+# func _on_professor_drag_started(professor_id: String):
+# 	_current_drag_type = "professor"
+# 	_dragged_professor_id = professor_id
+# 	var current_grid = classroom_tabs.get_current_tab_control()
+# 	if is_instance_valid(current_grid) and current_grid.has_method("show_professor_availability_overlay"):
+# 		current_grid.show_professor_availability_overlay(_dragged_professor_id)
+#
+# func _on_drag_ended_anywhere(): # Needs a more robust global drag end signal
+# 	if _current_drag_type == "professor":
+# 		var current_grid = classroom_tabs.get_current_tab_control()
+# 		if is_instance_valid(current_grid) and current_grid.has_method("clear_professor_availability_overlay"):
+# 			current_grid.clear_professor_availability_overlay()
+# 	_current_drag_type = ""
+# 	_dragged_professor_id = ""
 
 # --- UI Visibility ---
 func show_panel():
 	self.visible = true
-	call_deferred("refresh_ui") 
+	call_deferred("refresh_ui") # Refresh when shown
 
 func hide_panel():
 	self.visible = false
-	if _is_professor_being_dragged_for_overlay:
-		_on_professor_drag_ended_for_overlay() # Clear overlay if panel is hidden mid-drag
+	# Optional: clear any drag states if panel is hidden mid-drag
+	# _on_drag_ended_anywhere()
 
-# --- Professor Drag Overlay Signal Handlers ---
+# --- NEW: Signal Handlers for Professor Drag Overlay ---
 func _on_professor_drag_started_for_overlay(professor_id: String):
 	if DETAILED_LOGGING_ENABLED: print_debug(["Professor drag started for overlay. Prof ID:", professor_id])
 	_is_professor_being_dragged_for_overlay = true
@@ -270,28 +291,38 @@ func _on_professor_drag_started_for_overlay(professor_id: String):
 		var current_timetable_grid: TimetableGrid = current_tab_node
 		if current_timetable_grid.has_method("display_professor_availability_overlay"):
 			current_timetable_grid.display_professor_availability_overlay(_dragged_professor_id_for_overlay)
+		else:
+			printerr("SchedulingUI: Current TimetableGrid is missing 'display_professor_availability_overlay' method.")
+	elif DETAILED_LOGGING_ENABLED:
+		print_debug(["SchedulingUI: No valid TimetableGrid found in current tab to show overlay."])
 
 func _on_professor_drag_ended_for_overlay():
-	if not _is_professor_being_dragged_for_overlay: return
+	if not _is_professor_being_dragged_for_overlay: # Prevent clearing if no drag was active for overlay
+		return
+
 	if DETAILED_LOGGING_ENABLED: print_debug(["Professor drag ended for overlay. Clearing."])
-	
+	_is_professor_being_dragged_for_overlay = false
+	_dragged_professor_id_for_overlay = ""
+
 	var current_tab_node = classroom_tabs.get_current_tab_control()
 	if is_instance_valid(current_tab_node) and current_tab_node is TimetableGrid:
 		var current_timetable_grid: TimetableGrid = current_tab_node
 		if current_timetable_grid.has_method("clear_professor_availability_overlay"):
 			current_timetable_grid.clear_professor_availability_overlay()
-
-	_is_professor_being_dragged_for_overlay = false
-	_dragged_professor_id_for_overlay = ""
+		else:
+			printerr("SchedulingUI: Current TimetableGrid is missing 'clear_professor_availability_overlay' method.")
+	elif DETAILED_LOGGING_ENABLED:
+		print_debug(["SchedulingUI: No valid TimetableGrid found in current tab to clear overlay."])
 
 # --- Debug Utility ---
 func print_debug(message_parts):
 	if not DETAILED_LOGGING_ENABLED: return
-	var final_message = "[SchedulingPanel]: " 
+	var final_message = "[SchedulingUI]: "
 	if typeof(message_parts) == TYPE_STRING: final_message += message_parts
-	elif typeof(message_parts) == TYPE_ARRAY: 
-		var string_array : Array[String] = [] # Explicit typing for map lambda
-		for item in message_parts: string_array.append(str(item))
-		final_message += String(" ").join(string_array)
+	elif typeof(message_parts) == TYPE_ARRAY: final_message += String(" ").join(message_parts.map(func(x):return str(x)))
 	else: final_message += str(message_parts)
 	print(final_message)
+
+# Helper for TimetableGrid to get ProfessorManager ref (if needed, though it's passed in setup_grid)
+# func get_professor_manager_ref() -> ProfessorManager:
+# 	return professor_manager

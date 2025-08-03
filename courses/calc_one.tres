@@ -6,7 +6,6 @@
 script = ExtResource("1_o6866")
 course_id = "MATH267"
 course_name = "Calculus I"
-course_level = 0
 credits = 3.0
 description = "A course for suffering through calculus"
 progress_needed = 100

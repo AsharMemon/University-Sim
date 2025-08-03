@@ -6,7 +6,6 @@
 script = ExtResource("1_psile")
 course_id = "HTST101"
 course_name = "Intro to History"
-course_level = 0
 credits = 3.0
 description = "Learn about your past!"
 progress_needed = 100
